@@ -1,0 +1,177 @@
+# Local development stack for homelab-backstage
+#
+# Usage:
+#   cp .env.example .env          # fill in real values
+#   docker compose up -d          # start all services
+#   docker compose logs -f        # tail logs
+#   docker compose down -v        # stop and remove volumes
+#
+# Services:
+#   postgres   — Backstage's database
+#   keycloak   — Identity provider (imports keycloak/realm-export.json)
+#   kafka      — Single-broker KRaft cluster
+#   airflow    — Airflow standalone (LocalExecutor)
+#   backstage  — The Backstage app itself (built from Dockerfile.dev)
+
+version: "3.8"
+
+services:
+
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-backstage}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-backstage}
+      POSTGRES_DB: ${POSTGRES_DB:-backstage}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-backstage}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Keycloak ────────────────────────────────────────────────────────────────
+  # Dev mode (no TLS) — imports the realm definition on first start.
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0
+    restart: unless-stopped
+    command: start-dev --import-realm
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health/ready || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  # ── Kafka (KRaft, single-broker) ────────────────────────────────────────────
+  # Uses the official Apache Kafka Docker image (Kafka 3.7+, KRaft mode,
+  # no ZooKeeper required).
+  kafka:
+    image: apache/kafka:3.7.0
+    restart: unless-stopped
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+    ports:
+      - "9092:9092"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list > /dev/null 2>&1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+
+  # Kafka topic initialisation — runs once and exits
+  kafka-init:
+    image: apache/kafka:3.7.0
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: >
+      bash -c "
+        echo 'Creating demo topics…';
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic homelab-events --partitions 3 --replication-factor 1;
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic homelab-metrics --partitions 3 --replication-factor 1;
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic homelab-alerts --partitions 1 --replication-factor 1;
+        echo 'Topics created.';
+      "
+    restart: "no"
+
+  # ── Apache Airflow (standalone) ─────────────────────────────────────────────
+  # Single-container Airflow using LocalExecutor + embedded SQLite.
+  # Mount the local dags/ directory so example DAGs are available immediately.
+  airflow:
+    image: apache/airflow:2.9.1-python3.11
+    restart: unless-stopped
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/airflow.db
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY:-46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLt0nfd3LI=}
+      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY:-super-secret-airflow}
+      AIRFLOW__API__AUTH_BACKENDS: airflow.api.auth.backend.basic_auth
+      AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "true"
+      _AIRFLOW_DB_MIGRATE: "true"
+      _AIRFLOW_WWW_USER_CREATE: "true"
+      _AIRFLOW_WWW_USER_USERNAME: ${AIRFLOW_USER:-admin}
+      _AIRFLOW_WWW_USER_PASSWORD: ${AIRFLOW_PASSWORD:-admin}
+    ports:
+      - "8181:8080"
+    volumes:
+      - ./dags:/opt/airflow/dags:ro
+      - airflow_data:/opt/airflow
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  # ── Backstage ───────────────────────────────────────────────────────────────
+  backstage:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    ports:
+      - "7007:7007"
+      - "3000:3000"
+    environment:
+      # Database
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-backstage}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-backstage}
+      POSTGRES_DB: ${POSTGRES_DB:-backstage}
+      # Backstage secrets
+      BACKEND_SECRET: ${BACKEND_SECRET}
+      SESSION_SECRET: ${SESSION_SECRET}
+      # Keycloak OIDC (sign-in)
+      AUTH_OIDC_METADATA_URL: http://keycloak:8080/realms/backstage/.well-known/openid-configuration
+      AUTH_OIDC_CLIENT_ID: ${AUTH_OIDC_CLIENT_ID:-backstage}
+      AUTH_OIDC_CLIENT_SECRET: ${AUTH_OIDC_CLIENT_SECRET}
+      # Keycloak catalog sync
+      KEYCLOAK_BASE_URL: http://keycloak:8080
+      KEYCLOAK_LOGIN_REALM: master
+      KEYCLOAK_REALM: backstage
+      KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CATALOG_CLIENT_ID:-backstage-catalog-sync}
+      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CATALOG_CLIENT_SECRET}
+      # Kafka
+      KAFKA_BROKERS: kafka:9092
+      # Airflow
+      AIRFLOW_BASE_URL: http://airflow:8080/api/v1
+      AIRFLOW_BASIC_AUTH_BASE64: ${AIRFLOW_BASIC_AUTH_BASE64}
+      # GitHub (optional)
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+
+volumes:
+  postgres_data:
+  kafka_data:
+  airflow_data:

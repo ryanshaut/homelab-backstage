@@ -1,2 +1,147 @@
 # homelab-backstage
-A backstage deployment for my homelab, leveraging Keycloak as an IDP and services backed by Airflow and kafka
+
+A Backstage deployment for a homelab environment, demonstrating:
+
+- **Keycloak** as identity provider (OIDC sign-in + catalog user/group sync)
+- **Apache Kafka** integration (topic & consumer-group info on entity pages)
+- **Apache Airflow** integration (DAG run status on entity pages)
+- **PostgreSQL** as the catalog database
+- Full **Docker Compose** stack for local development
+- Production **multi-stage Dockerfile** + **GitHub Actions** CI/CD pipeline
+
+> **Learning project** — code is heavily commented, favouring clarity over
+> completeness.  See the "Known gaps" section at the bottom for what's stubbed.
+
+---
+
+## Architecture
+
+```mermaid
+graph TD
+    Browser -->|http :3000| Backstage
+    Backstage -->|OIDC| Keycloak
+    Backstage -->|catalog sync| Keycloak
+    Backstage -->|jdbc| Postgres
+    Backstage -->|Kafka API| Kafka
+    Backstage -->|REST proxy| Airflow
+```
+
+| Service | Port | Purpose |
+|---------|------|---------|
+| Backstage backend | 7007 | API & plugin backends |
+| Backstage frontend | 3000 | React UI (dev server) |
+| Keycloak | 8080 | OIDC / IdP |
+| PostgreSQL | 5432 | Backstage database |
+| Kafka | 9092 | Event streaming |
+| Airflow | 8181 | Workflow orchestration |
+
+---
+
+## Running locally with Docker Compose
+
+### Prerequisites
+
+- Docker Engine ≥ 24 with Compose plugin
+- `make` (optional, but convenient)
+
+### Steps
+
+```bash
+# 1. Copy and configure environment variables
+cp .env.example .env
+# Edit .env and fill in secrets (at minimum BACKEND_SECRET, SESSION_SECRET,
+# AUTH_OIDC_CLIENT_SECRET, KEYCLOAK_CATALOG_CLIENT_SECRET)
+
+# 2. Start the full stack
+make dev-up
+# or: docker compose up -d
+
+# 3. Wait ~60 s for all services to become healthy, then open:
+#   Backstage:  http://localhost:3000
+#   Keycloak:   http://localhost:8080  (admin / value from .env)
+#   Airflow:    http://localhost:8181  (admin / admin)
+```
+
+### Useful commands
+
+```bash
+make dev-logs                  # tail all logs
+make dev-restart svc=backstage # restart a single service
+make dev-down                  # stop (keep volumes)
+make dev-clean                 # stop + remove volumes (full reset)
+```
+
+---
+
+## Integrations
+
+### Keycloak
+
+See [docs/keycloak.md](docs/keycloak.md) for full details.
+
+- The realm export at `keycloak/realm-export.json` is imported automatically
+  on first Keycloak startup.
+- Two demo users (`alice`, `bob`) are pre-created in the `platform-team` group.
+- Sign-in uses the `backstage` OIDC client; catalog sync uses the
+  `backstage-catalog-sync` service-account client.
+
+Required env vars: `AUTH_OIDC_*`, `KEYCLOAK_*`
+
+### Kafka
+
+See [docs/kafka.md](docs/kafka.md) for full details.
+
+- The `@backstage-community/plugin-kafka-backend` is registered in
+  `packages/backend/src/index.ts`.
+- Three demo topics are auto-created by the `kafka-init` container.
+- Annotate a Component with `kafka.apache.org/consumer-groups: <group>`
+  to show consumer-lag info on that entity's page.
+
+Required env vars: `KAFKA_BROKERS`
+
+### Airflow
+
+See [docs/airflow.md](docs/airflow.md) for full details.
+
+- The `@backstage-community/plugin-apache-airflow` frontend plugin is wired
+  to a backend proxy at `/api/proxy/airflow`.
+- Annotate a Component with `apache-airflow/dags: <dag-id>` to link it to
+  an Airflow DAG.
+
+Required env vars: `AIRFLOW_BASE_URL`, `AIRFLOW_BASIC_AUTH_BASE64`
+
+---
+
+## Production image pipeline
+
+The root `Dockerfile` is a multi-stage build:
+
+1. **build** stage — full Node 20, installs deps, runs `yarn tsc` and
+   `yarn build:backend`.
+2. **runtime** stage — slim Node 20 (`bookworm-slim`), non-root user, copies
+   only the compiled backend bundle + frontend assets.
+
+The GitHub Actions workflow `.github/workflows/build-image.yml`:
+
+- Runs a **quality gate** (typecheck + tests) before building.
+- Builds and pushes to **GitHub Container Registry** (`ghcr.io/<owner>/<repo>`).
+- Tags with git SHA and (on version tags) semver.
+- Uses **BuildKit layer caching** via `cache-from/cache-to: type=gha`.
+- Runs a **Trivy** vulnerability scan on the pushed image (non-blocking).
+
+A separate `.github/workflows/ci.yml` runs lint + typecheck + unit tests on
+every pull request.
+
+---
+
+## Known gaps / next steps
+
+| Area | Status | Notes |
+|------|--------|-------|
+| Kafka frontend card | ⚠️ Partial | `@backstage-community/plugin-kafka` package added but entity-tab wiring requires the new declarative-integration alpha API — see docs/kafka.md |
+| Airflow frontend card | ⚠️ Partial | `@backstage-community/plugin-apache-airflow` added; entity-tab wiring TBD |
+| Keycloak prod TLS | ❌ Not done | Compose uses `start-dev`; production would need `start` + TLS certs |
+| Permission policy | ❌ Stub | Uses `allow-all-policy`; replace with a real policy for production |
+| TechDocs | ⚠️ Basic | Local builder, no external storage |
+| Test coverage | ❌ Minimal | Scaffolded unit tests only |
+| Kubernetes plugin | ⚠️ Enabled | No cluster connected; configure via `app-config.yaml` |

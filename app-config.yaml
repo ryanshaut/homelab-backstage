@@ -1,0 +1,126 @@
+app:
+  title: Homelab Backstage
+  baseUrl: http://localhost:3000
+  packages: all
+
+organization:
+  name: Homelab
+
+backend:
+  baseUrl: http://localhost:7007
+  listen:
+    port: 7007
+  csp:
+    connect-src: ["'self'", 'http:', 'https:']
+  cors:
+    origin: http://localhost:3000
+    methods: [GET, HEAD, PATCH, POST, PUT, DELETE]
+    credentials: true
+  auth:
+    keys:
+      - secret: ${BACKEND_SECRET}
+  database:
+    client: pg
+    connection:
+      host: ${POSTGRES_HOST}
+      port: ${POSTGRES_PORT}
+      user: ${POSTGRES_USER}
+      password: ${POSTGRES_PASSWORD}
+      database: ${POSTGRES_DB}
+  actions:
+    pluginSources:
+      - auth
+      - catalog
+      - scaffolder
+
+integrations:
+  github:
+    - host: github.com
+      token: ${GITHUB_TOKEN}
+
+proxy:
+  endpoints:
+    # Apache Airflow REST API proxy - frontend talks to /api/proxy/airflow
+    /airflow:
+      target: ${AIRFLOW_BASE_URL}
+      changeOrigin: true
+      # Basic-auth credentials are injected at the backend so the browser
+      # never sees them.
+      headers:
+        Authorization: Basic ${AIRFLOW_BASIC_AUTH_BASE64}
+
+techdocs:
+  builder: 'local'
+  generator:
+    runIn: 'docker'
+  publisher:
+    type: 'local'
+
+auth:
+  environment: development
+  session:
+    secret: ${SESSION_SECRET}
+  providers:
+    # Keycloak OIDC — primary sign-in method
+    oidc:
+      development:
+        metadataUrl: ${AUTH_OIDC_METADATA_URL}
+        clientId: ${AUTH_OIDC_CLIENT_ID}
+        clientSecret: ${AUTH_OIDC_CLIENT_SECRET}
+        # Prompt for login even if already authenticated in Keycloak
+        prompt: auto
+        signIn:
+          resolvers:
+            # Match Keycloak username to Backstage user entity
+            - resolver: preferredUsernameMatchingUserEntityName
+    # Keep guest provider for local development without Keycloak
+    guest:
+      dangerouslyAllowOutsideDevelopment: false
+
+scaffolder: {}
+
+# Keycloak catalog-sync configuration
+keycloak:
+  baseUrl: ${KEYCLOAK_BASE_URL}
+  loginRealm: ${KEYCLOAK_LOGIN_REALM}
+  realm: ${KEYCLOAK_REALM}
+  clientId: ${KEYCLOAK_CLIENT_ID}
+  clientSecret: ${KEYCLOAK_CLIENT_SECRET}
+
+# Kafka plugin configuration
+kafka:
+  clientId: homelab-backstage
+  clusters:
+    - name: local
+      dashboardUrl: http://localhost:9000  # optional Kafka UI URL
+      brokers:
+        - ${KAFKA_BROKERS}
+
+catalog:
+  import:
+    entityFilename: catalog-info.yaml
+    pullRequestBranchName: backstage-integration
+  rules:
+    - allow: [Component, System, API, Resource, Location, User, Group]
+  locations:
+    # Core example entities
+    - type: file
+      target: ../../examples/entities.yaml
+    # Example template
+    - type: file
+      target: ../../examples/template/template.yaml
+      rules:
+        - allow: [Template]
+    # Org data — replaced by Keycloak sync in production;
+    # kept here so the catalog is non-empty without Keycloak running
+    - type: file
+      target: ../../examples/org.yaml
+      rules:
+        - allow: [User, Group]
+
+permission:
+  enabled: true
+
+mcpActions:
+  name: 'Homelab Backstage'
+  description: 'Tools for managing the homelab software catalog'

@@ -1,0 +1,38 @@
+---
+# These are example org entities used when Keycloak sync is not running.
+# In production the Keycloak catalog module replaces/augments these.
+
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: platform-team
+  description: Platform engineering team
+spec:
+  type: team
+  profile:
+    displayName: Platform Team
+  children: []
+---
+apiVersion: backstage.io/v1alpha1
+kind: User
+metadata:
+  name: alice
+  description: Demo user Alice
+spec:
+  profile:
+    displayName: Alice Example
+    email: alice@example.com
+  memberOf:
+    - platform-team
+---
+apiVersion: backstage.io/v1alpha1
+kind: User
+metadata:
+  name: bob
+  description: Demo user Bob
+spec:
+  profile:
+    displayName: Bob Example
+    email: bob@example.com
+  memberOf:
+    - platform-team
