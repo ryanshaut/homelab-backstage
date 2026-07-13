@@ -59,8 +59,8 @@ keycloak:
   baseUrl: ${KEYCLOAK_BASE_URL}
   loginRealm: ${KEYCLOAK_LOGIN_REALM}
   realm: ${KEYCLOAK_REALM}
-  clientId: ${KEYCLOAK_CLIENT_ID}
-  clientSecret: ${KEYCLOAK_CLIENT_SECRET}
+  clientId: ${KEYCLOAK_CATALOG_CLIENT_ID}
+  clientSecret: ${KEYCLOAK_CATALOG_CLIENT_SECRET}
 ```
 
 ## Service-account permissions

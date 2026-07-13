@@ -1,19 +1,19 @@
 app:
   title: Homelab Backstage
-  baseUrl: http://localhost:3000
+  baseUrl: ${APP_BASE_URL}
   packages: all
 
 organization:
   name: Homelab
 
 backend:
-  baseUrl: http://localhost:7007
+  baseUrl: ${BACKEND_BASE_URL}
   listen:
     port: 7007
   csp:
     connect-src: ["'self'", 'http:', 'https:']
   cors:
-    origin: http://localhost:3000
+    origin: ${APP_BASE_URL}
     methods: [GET, HEAD, PATCH, POST, PUT, DELETE]
     credentials: true
   auth:
@@ -84,8 +84,8 @@ keycloak:
   baseUrl: ${KEYCLOAK_BASE_URL}
   loginRealm: ${KEYCLOAK_LOGIN_REALM}
   realm: ${KEYCLOAK_REALM}
-  clientId: ${KEYCLOAK_CLIENT_ID}
-  clientSecret: ${KEYCLOAK_CLIENT_SECRET}
+  clientId: ${KEYCLOAK_CATALOG_CLIENT_ID}
+  clientSecret: ${KEYCLOAK_CATALOG_CLIENT_SECRET}
 
 # Kafka plugin configuration
 kafka:
@@ -95,6 +95,11 @@ kafka:
       dashboardUrl: http://localhost:9000  # optional Kafka UI URL
       brokers:
         - ${KAFKA_BROKERS}
+
+# Apache Airflow frontend plugin config
+apacheAirflow:
+  # Used for links in the UI (DAG details/graph). Proxy target is configured above.
+  baseUrl: ${AIRFLOW_UI_BASE_URL}
 
 catalog:
   import:
