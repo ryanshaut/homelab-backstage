@@ -31,6 +31,6 @@ auth:
         prompt: auto
         signIn:
           resolvers:
-            - resolver: preferredUsernameMatchingUserEntityName
+            - resolver: emailMatchingUserEntityProfileEmail
     # Disable guest provider in production
     guest: null

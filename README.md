@@ -3,8 +3,6 @@
 A Backstage deployment for a homelab environment, demonstrating:
 
 - **Keycloak** as identity provider (OIDC sign-in + catalog user/group sync)
-- **Apache Kafka** integration (topic & consumer-group info on entity pages)
-- **Apache Airflow** integration (DAG run status on entity pages)
 - **PostgreSQL** as the catalog database
 - Full **Docker Compose** stack for local development
 - Production **multi-stage Dockerfile** + **GitHub Actions** CI/CD pipeline
@@ -22,8 +20,6 @@ graph TD
     Backstage -->|OIDC| Keycloak
     Backstage -->|catalog sync| Keycloak
     Backstage -->|jdbc| Postgres
-    Backstage -->|Kafka API| Kafka
-    Backstage -->|REST proxy| Airflow
 ```
 
 | Service | Port | Purpose |
@@ -32,8 +28,6 @@ graph TD
 | Backstage frontend | 3000 | React UI (dev server) |
 | Keycloak | 8080 | OIDC / IdP |
 | PostgreSQL | 5432 | Backstage database |
-| Kafka | 9092 | Event streaming |
-| Airflow | 8181 | Workflow orchestration |
 
 ---
 
@@ -59,7 +53,6 @@ make dev-up
 # 3. Wait ~60 s for all services to become healthy, then open:
 #   Backstage:  http://localhost:3000
 #   Keycloak:   http://localhost:8080  (admin / value from .env)
-#   Airflow:    http://localhost:8181  (admin / admin)
 ```
 
 ### Useful commands
@@ -87,28 +80,14 @@ See [docs/keycloak.md](docs/keycloak.md) for full details.
 
 Required env vars: `AUTH_OIDC_*`, `KEYCLOAK_*`
 
-### Kafka
+### Generic Webhooks
 
-See [docs/kafka.md](docs/kafka.md) for full details.
-
-- The `@backstage-community/plugin-kafka-backend` is registered in
-  `packages/backend/src/index.ts`.
-- Three demo topics are auto-created by the `kafka-init` container.
-- Annotate a Component with `kafka.apache.org/consumer-groups: <group>`
-  to show consumer-lag info on that entity's page.
-
-Required env vars: `KAFKA_BROKERS`
-
-### Airflow
-
-See [docs/airflow.md](docs/airflow.md) for full details.
-
-- The `@backstage-community/plugin-apache-airflow` frontend plugin is wired
-  to a backend proxy at `/api/proxy/airflow`.
-- Annotate a Component with `apache-airflow/dags: <dag-id>` to link it to
-  an Airflow DAG.
-
-Required env vars: `AIRFLOW_BASE_URL`, `AIRFLOW_BASIC_AUTH_BASE64`
+- Backstage exposes `POST/GET/... /api/webhooks/<app>/<event>`.
+- Requests are forwarded to `${WEBHOOK_BASE_URL}/<tenant>/<app>/<event>`.
+- Tenant defaults to `backstage-<auth.environment>` and can be overridden with
+  `WEBHOOK_TENANT`.
+- Method, query string, body, and headers are passed through for compatibility
+  with external webhook backends.
 
 ---
 
@@ -138,8 +117,6 @@ every pull request.
 
 | Area | Status | Notes |
 |------|--------|-------|
-| Kafka frontend card | ⚠️ Partial | `@backstage-community/plugin-kafka` package added but entity-tab wiring requires the new declarative-integration alpha API — see docs/kafka.md |
-| Airflow frontend card | ⚠️ Partial | `@backstage-community/plugin-apache-airflow` added; entity-tab wiring TBD |
 | Keycloak prod TLS | ❌ Not done | Compose uses `start-dev`; production would need `start` + TLS certs |
 | Permission policy | ❌ Stub | Uses `allow-all-policy`; replace with a real policy for production |
 | TechDocs | ⚠️ Basic | Local builder, no external storage |

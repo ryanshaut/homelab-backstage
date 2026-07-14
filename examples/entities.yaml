@@ -4,11 +4,9 @@ apiVersion: backstage.io/v1alpha1
 kind: System
 metadata:
   name: data-platform
-  description: Homelab data-platform system (Kafka + Airflow)
+  description: Homelab data-platform system
   tags:
     - data
-    - kafka
-    - airflow
 spec:
   owner: group:platform-team
 ---
@@ -17,11 +15,7 @@ apiVersion: backstage.io/v1alpha1
 kind: API
 metadata:
   name: homelab-events-api
-  description: Kafka-backed homelab events stream
-  annotations:
-    # Annotation used by the Kafka plugin to link this entity to a topic.
-    # See docs/kafka.md for details.
-    kafka.apache.org/consumer-groups: homelab-events-consumers
+  description: Homelab events stream
 spec:
   type: async-api
   lifecycle: experimental
@@ -41,18 +35,12 @@ spec:
 ---
 # ── Components ────────────────────────────────────────────────────────────────
 
-# Kafka-backed component — demonstrates the Kafka entity card
 apiVersion: backstage.io/v1alpha1
 kind: Component
 metadata:
   name: homelab-event-producer
-  description: Publishes events to the homelab-events Kafka topic
-  annotations:
-    # kafka.apache.org/consumer-groups tells the Kafka plugin which
-    # consumer groups to show on this entity's page. See docs/kafka.md.
-    kafka.apache.org/consumer-groups: homelab-events-consumers
+  description: Publishes events to the homelab-events stream
   tags:
-    - kafka
     - data
 spec:
   type: service
@@ -62,18 +50,12 @@ spec:
   providesApis:
     - homelab-events-api
 ---
-# Airflow-backed component — demonstrates the Airflow entity card
 apiVersion: backstage.io/v1alpha1
 kind: Component
 metadata:
   name: homelab-data-pipeline
-  description: Airflow DAG that processes homelab metrics
-  annotations:
-    # apache-airflow/dags tells the Airflow plugin which DAG to surface
-    # on this entity's page. See docs/airflow.md.
-    apache-airflow/dags: homelab_metrics_dag
+  description: Data pipeline that processes homelab metrics
   tags:
-    - airflow
     - data
 spec:
   type: service
