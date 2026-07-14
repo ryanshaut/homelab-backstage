@@ -2,6 +2,10 @@ app:
   title: Homelab Backstage
   baseUrl: ${APP_BASE_URL}
   packages: all
+  
+  listen:
+    port: 3000
+    host: 0.0.0.0
 
 organization:
   name: Homelab
@@ -10,6 +14,7 @@ backend:
   baseUrl: ${BACKEND_BASE_URL}
   listen:
     port: 7007
+    host: 0.0.0.0
   csp:
     connect-src: ["'self'", 'http:', 'https:']
   cors:
