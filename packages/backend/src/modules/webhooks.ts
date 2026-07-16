@@ -64,7 +64,8 @@ export const webhooksModule = createBackendModule({
             }
 
             const hasBody = !['GET', 'HEAD'].includes(req.method.toUpperCase());
-            const body = hasBody ? (req.body as Buffer | undefined) : undefined;
+            const rawBody = hasBody ? (req.body as Buffer | undefined) : undefined;
+            const body = rawBody ? new Uint8Array(rawBody) : undefined;
 
             const upstream = await fetch(targetUrl, {
               method: req.method,
@@ -83,8 +84,17 @@ export const webhooksModule = createBackendModule({
             const responseBody = Buffer.from(await upstream.arrayBuffer());
             res.send(responseBody);
           } catch (error) {
+            const errorDetails =
+              error instanceof Error
+                ? {
+                    name: error.name,
+                    message: error.message,
+                    stack: error.stack,
+                  }
+                : { message: String(error) };
+
             logger.error('Webhook proxy request failed', {
-              error: error instanceof Error ? error : new Error(String(error)),
+              error: errorDetails,
               path: req.path,
               method: req.method,
             });
