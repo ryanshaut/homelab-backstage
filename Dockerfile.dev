@@ -17,7 +17,7 @@ COPY package.json .yarnrc.yml yarn.lock ./
 COPY .yarn .yarn
 COPY packages/app/package.json packages/app/
 COPY packages/backend/package.json packages/backend/
-y
+
 # Install all dependencies (dev deps included for building)
 # Some optional native modules (better-sqlite3, isolated-vm, cpu-features) may fail to build in container
 # This is ok - they're not essential for the Backstage dev server

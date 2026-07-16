@@ -6,3 +6,6 @@ packages/*/src
 packages/*/node_modules
 plugins
 *.local.yaml
+Dockerfile
+Dockerfile.dev
+app-config.production.yaml
