@@ -18,7 +18,10 @@ backend:
   csp:
     connect-src: ["'self'", 'http:', 'https:']
   cors:
-    origin: ${APP_BASE_URL}
+    # Allow frontend calls from configured app/backend origins.
+    origin:
+      - ${APP_BASE_URL}
+      - ${BACKEND_BASE_URL}
     methods: [GET, HEAD, PATCH, POST, PUT, DELETE]
     credentials: true
   auth:
@@ -58,6 +61,10 @@ techdocs:
 
 auth:
   environment: development
+  # Allow auth popup callback from both app and backend public origins.
+  experimentalExtraAllowedOrigins:
+    - ${APP_BASE_URL}
+    - ${BACKEND_BASE_URL}
   session:
     secret: ${SESSION_SECRET}
   providers:

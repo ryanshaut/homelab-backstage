@@ -11,12 +11,16 @@
 # stage only.  See .github/workflows/build-image.yml.
 
 # ── Stage 1: build ──────────────────────────────────────────────────────────
-FROM node:20-bookworm AS build
+FROM node:22-bookworm AS build
 
 WORKDIR /app
 
 # Enable Yarn Berry via Corepack
 RUN corepack enable
+
+# Toolchain for native dependencies (for example isolated-vm)
+RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ \
+	&& rm -rf /var/lib/apt/lists/*
 
 # Copy dependency manifests for layer caching
 COPY package.json .yarnrc.yml yarn.lock ./
@@ -25,7 +29,7 @@ COPY packages/app/package.json packages/app/
 COPY packages/backend/package.json packages/backend/
 
 # Install all deps (including dev) — needed for tsc + build steps
-RUN yarn install --immutable || echo "Some optional modules failed to build (expected in container)"
+RUN yarn install --immutable
 
 # Copy source
 COPY . .
@@ -37,7 +41,7 @@ RUN yarn tsc
 RUN yarn build:backend
 
 # ── Stage 2: runtime ────────────────────────────────────────────────────────
-FROM node:20-bookworm-slim AS runtime
+FROM node:22-bookworm-slim AS runtime
 
 # Install only the OS-level runtime requirements
 RUN apt-get update && apt-get install -y --no-install-recommends     libssl3     && rm -rf /var/lib/apt/lists/*
@@ -54,6 +58,13 @@ RUN corepack enable
 COPY --from=build --chown=backstage:backstage /app/packages/backend/dist ./packages/backend/dist
 COPY --from=build --chown=backstage:backstage /app/packages/backend/package.json ./packages/backend/package.json
 
+# The Backstage backend build outputs tarballs; extract the app bundle so
+# packages/backend/dist/index.cjs.js exists at runtime.
+RUN tar -xzf ./packages/backend/dist/bundle.tar.gz -C /app \
+	&& rm ./packages/backend/dist/bundle.tar.gz ./packages/backend/dist/skeleton.tar.gz \
+	&& chmod 755 /app \
+	&& chown -R backstage:backstage /app
+
 # Copy the built frontend assets (served by the app-backend plugin)
 COPY --from=build --chown=backstage:backstage /app/packages/app/dist ./packages/app/dist
 
@@ -66,7 +77,7 @@ COPY --from=build --chown=backstage:backstage /app/package.json ./
 COPY --from=build --chown=backstage:backstage /app/node_modules ./node_modules
 
 # Copy config files
-COPY --chown=backstage:backstage app-config.yaml app-config.production.yaml ./
+COPY --chown=backstage:backstage app-config.yaml ./
 
 # Copy catalog examples so file-based locations resolve at runtime
 COPY --chown=backstage:backstage examples ./examples
@@ -77,4 +88,4 @@ EXPOSE 7007
 
 ENV NODE_ENV=production
 
-CMD ["node", "packages/backend/dist/index.cjs.js", "--config", "app-config.yaml", "--config", "app-config.production.yaml"]
+CMD ["node", "packages/backend/dist/index.cjs.js", "--config", "app-config.yaml"]
