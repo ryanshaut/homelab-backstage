@@ -1,0 +1,24 @@
+# Single-origin local Docker overlay
+
+app:
+  baseUrl: http://localhost:7007
+
+backend:
+  baseUrl: http://localhost:7007
+  cors:
+    origin:
+      - http://localhost:7007
+
+auth:
+  environment: development
+  experimentalExtraAllowedOrigins:
+    - http://localhost:7007
+
+catalog:
+  locations:
+    - type: file
+      target: ./examples/entities.yaml
+    - type: file
+      target: ./examples/template/template.yaml
+      rules:
+        - allow: [Template]

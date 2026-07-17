@@ -76,8 +76,8 @@ COPY --from=build --chown=backstage:backstage /app/package.json ./
 # the node_modules alongside.
 COPY --from=build --chown=backstage:backstage /app/node_modules ./node_modules
 
-# Copy config files
-COPY --chown=backstage:backstage app-config.yaml ./
+# Copy config files (base + optional env overlays)
+COPY --chown=backstage:backstage app-config*.yaml ./
 
 # Copy catalog examples so file-based locations resolve at runtime
 COPY --chown=backstage:backstage examples ./examples
@@ -88,4 +88,6 @@ EXPOSE 7007
 
 ENV NODE_ENV=production
 
-CMD ["node", "packages/backend/dist/index.cjs.js", "--config", "app-config.yaml"]
+# APP_CONFIG_ARGS lets each environment choose its config stack.
+# Example: --config app-config.yaml --config app-config.k8s-prod.yaml
+CMD ["sh", "-c", "node packages/backend/dist/index.cjs.js ${APP_CONFIG_ARGS:---config app-config.yaml}"]

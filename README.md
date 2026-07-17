@@ -64,6 +64,50 @@ make dev-down                  # stop (keep volumes)
 make dev-clean                 # stop + remove volumes (full reset)
 ```
 
+## Configuration Strategy (Robust Multi-Env)
+
+This repo now supports layered Backstage config files so each runtime can load
+the right origins, auth environment, and template sources without brittle path
+assumptions.
+
+Available overlays:
+
+- `app-config.local.yaml` (yarn local dev, split origin 3000/7007)
+- `app-config.local-docker.yaml` (single-origin local Docker on 7007)
+- `app-config.k8s-dev.yaml` (Kubernetes dev/staging)
+- `app-config.k8s-prod.yaml` (Kubernetes production)
+
+Base config remains in `app-config.yaml`.
+
+### Local yarn dev
+
+```bash
+yarn start --config app-config.yaml --config app-config.local.yaml
+```
+
+### Local Docker single-origin
+
+```bash
+docker run -p 7007:7007 --env-file .env \
+  -e APP_CONFIG_ARGS="--config app-config.yaml --config app-config.local-docker.yaml" \
+  homelab-backstage:prod.10
+```
+
+### Kubernetes (dev/prod)
+
+Set `APP_CONFIG_ARGS` on the deployment:
+
+- Dev: `--config app-config.yaml --config app-config.k8s-dev.yaml`
+- Prod: `--config app-config.yaml --config app-config.k8s-prod.yaml`
+
+For K8s overlays, set template source env vars such as:
+
+- `TEMPLATE_REPO_1_URL`
+- `TEMPLATE_REPO_2_URL`
+
+Each should point to a raw catalog YAML URL that defines one or more
+`Template` entities.
+
 ---
 
 ## Integrations
