@@ -108,7 +108,7 @@ catalog:
       target: ./examples/entities.yaml
     # Example template
     - type: file
-      target: ./examples/template/template.yaml
+      target: ./examples/templates/**/template.yaml
       rules:
         - allow: [Template]
 
