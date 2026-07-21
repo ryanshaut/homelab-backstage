@@ -30,6 +30,8 @@ install:
 # Build the production Docker image locally
 build:
 	docker build -t homelab-backstage:local .
+	docker tag homelab-backstage:local image-local.int.shaut.us/homelab-backstage:local
+	docker push image-local.int.shaut.us/homelab-backstage:local
 
 help:
 	@echo "Available targets:"
