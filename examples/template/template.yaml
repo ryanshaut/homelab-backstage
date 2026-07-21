@@ -1,0 +1,138 @@
+apiVersion: scaffolder.backstage.io/v1beta3
+kind: Template
+metadata:
+  name: request-vm-template
+  title: Request VM
+  description: Request a VM from the generic webhook backend
+spec:
+  owner: group:platform-team
+  type: infrastructure
+
+  parameters:
+    - title: VM Details
+      required:
+        - vmName
+        - image
+      properties:
+        vmName:
+          title: VM Name
+          type: string
+          description: Unique VM name
+          ui:autofocus: true
+        image:
+          title: Image
+          type: string
+          description: VM image or template identifier
+          default: ubuntu-24.04
+        cpu:
+          title: vCPU
+          type: number
+          default: 2
+        memoryGb:
+          title: Memory (GB)
+          type: number
+          default: 4
+        diskGb:
+          title: Disk (GB)
+          type: number
+          default: 40
+
+  steps:
+    - id: request-vm
+      name: Request VM
+      action: webhook:request-vm
+      input:
+        app: infra
+        event: request-vm
+        vmName: ${{ parameters.vmName }}
+        image: ${{ parameters.image }}
+        cpu: ${{ parameters.cpu }}
+        memoryGb: ${{ parameters.memoryGb }}
+        diskGb: ${{ parameters.diskGb }}
+        metadata:
+          requestedBy: ${{ user.entity.metadata.name }}
+
+  output:
+    links:
+      - title: Webhook Endpoint
+        url: ${{ steps['request-vm'].output.targetUrl }}
+      - title: Request Resource URL
+        url: ${{ steps['request-vm'].output.resourceUrl }}
+    text:
+      - title: VM Request Result
+        content: |
+          Status: ${{ steps['request-vm'].output.status }}
+          Response: ${{ steps['request-vm'].output.response }}
+---
+apiVersion: scaffolder.backstage.io/v1beta3
+kind: Template
+metadata:
+  name: dispatch-webhook-template
+  title: Dispatch Generic Webhook
+  description: Dispatch a generic webhook request using template-defined routing
+spec:
+  owner: group:platform-team
+  type: automation
+
+  parameters:
+    - title: Request Data
+      required:
+        - resourceName
+        - operation
+      properties:
+        resourceName:
+          title: Resource Name
+          type: string
+          description: Target resource for this operation
+          ui:autofocus: true
+        operation:
+          title: Operation
+          type: string
+          enum:
+            - create
+            - update
+            - delete
+        reason:
+          title: Reason
+          type: string
+          default: Requested from Backstage template
+        priority:
+          title: Priority
+          type: string
+          enum:
+            - low
+            - normal
+            - high
+          default: normal
+
+  steps:
+    - id: dispatch
+      name: Dispatch Webhook
+      action: webhook:dispatch
+      input:
+        app: automation
+        event: resource-change
+        method: POST
+        headers:
+          x-request-source: backstage-scaffolder
+        query:
+          version: v1
+        body:
+          resourceName: ${{ parameters.resourceName }}
+          operation: ${{ parameters.operation }}
+          reason: ${{ parameters.reason }}
+          priority: ${{ parameters.priority }}
+          requestedBy: ${{ user.entity.metadata.name }}
+          templateName: dispatch-webhook-template
+
+  output:
+    links:
+      - title: Webhook Endpoint
+        url: ${{ steps['dispatch'].output.targetUrl }}
+      - title: Request Resource URL
+        url: ${{ steps['dispatch'].output.resourceUrl }}
+    text:
+      - title: Dispatch Result
+        content: |
+          Status: ${{ steps['dispatch'].output.status }}
+          Response: ${{ steps['dispatch'].output.response }}

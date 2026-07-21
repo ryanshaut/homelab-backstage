@@ -1,0 +1,120 @@
+app:
+  title: Homelab Backstage
+  baseUrl: ${APP_BASE_URL}
+  packages: all
+  
+  listen:
+    port: 3000
+    host: 0.0.0.0
+
+organization:
+  name: Homelab
+
+backend:
+  baseUrl: ${BACKEND_BASE_URL}
+  listen:
+    port: 7007
+    host: 0.0.0.0
+  csp:
+    connect-src: ["'self'", 'http:', 'https:']
+  cors:
+    # Allow frontend calls from configured app/backend origins.
+    origin:
+      - ${APP_BASE_URL}
+      - ${BACKEND_BASE_URL}
+    methods: [GET, HEAD, PATCH, POST, PUT, DELETE]
+    credentials: true
+  auth:
+    keys:
+      - secret: ${BACKEND_SECRET}
+  database:
+    client: better-sqlite3
+    connection: ':memory:'
+  actions:
+    pluginSources:
+      - auth
+      - catalog
+      - scaffolder
+
+# NOTE: Disabled for Keycloak auth troubleshooting.
+# Re-enable when testing SCM integrations.
+# integrations:
+#   github:
+#     - host: github.com
+#       token: ${GITHUB_TOKEN}
+
+proxy: {}
+
+webhooks:
+  # Base URL of the generic webhook backend. The tenant/app/event suffix
+  # is appended by the Backstage backend route.
+  baseUrl: ${WEBHOOK_BASE_URL}
+  # Optional explicit tenant override. If unset, defaults to backstage-<auth.environment>.
+  tenant: ${WEBHOOK_TENANT}
+
+techdocs:
+  builder: 'local'
+  generator:
+    runIn: 'docker'
+  publisher:
+    type: 'local'
+
+auth:
+  environment: development
+  # Allow auth popup callback from both app and backend public origins.
+  experimentalExtraAllowedOrigins:
+    - ${APP_BASE_URL}
+    - ${BACKEND_BASE_URL}
+  session:
+    secret: ${SESSION_SECRET}
+  providers:
+    # Keycloak OIDC — primary sign-in method
+    oidc:
+      development:
+        metadataUrl: ${AUTH_OIDC_METADATA_URL}
+        clientId: ${AUTH_OIDC_CLIENT_ID}
+        clientSecret: ${AUTH_OIDC_CLIENT_SECRET}
+        # Prompt for login even if already authenticated in Keycloak
+        prompt: auto
+        signIn:
+          resolvers:
+            # Match OIDC email claim to Backstage user entity profile email.
+            - resolver: emailMatchingUserEntityProfileEmail
+    # Force Keycloak sign-in in all environments.
+    guest: null
+
+scaffolder: {}
+
+catalog:
+  providers:
+    keycloakOrg:
+      default:
+        baseUrl: ${KEYCLOAK_BASE_URL}
+        loginRealm: ${KEYCLOAK_LOGIN_REALM}
+        realm: ${KEYCLOAK_REALM}
+        clientId: ${KEYCLOAK_CATALOG_CLIENT_ID}
+        clientSecret: ${KEYCLOAK_CATALOG_CLIENT_SECRET}
+        schedule:
+          frequency: { minutes: 5 }
+          timeout: { minutes: 3 }
+  import:
+    entityFilename: catalog-info.yaml
+    pullRequestBranchName: backstage-integration
+  rules:
+    - allow: [Component, System, API, Resource, Location, User, Group]
+  locations:
+    # Core example entities
+    - type: file
+      target: ./examples/entities.yaml
+    # Example template
+    - type: file
+      target: ./examples/template/template.yaml
+      rules:
+        - allow: [Template]
+
+permission:
+  enabled: true
+
+mcpActions:
+  name: 'Homelab Backstage'
+  description: 'Tools for managing the homelab software catalog'

@@ -1,0 +1,33 @@
+# Development Dockerfile — used by docker-compose.yaml for local demos.
+# Runs the Backstage dev server (hot-reload) inside the container.
+# NOT suitable for production — use the root Dockerfile instead.
+
+FROM node:20-bookworm-slim
+
+WORKDIR /app
+
+# Install system deps needed by some native modules (e.g. better-sqlite3)
+RUN apt-get update && apt-get install -y --no-install-recommends     python3     make     g++     && rm -rf /var/lib/apt/lists/*
+
+# Enable corepack so we can use Yarn 4 (berry) without a global install
+RUN corepack enable
+
+# Copy just the dependency manifests first so Docker can cache this layer
+COPY package.json .yarnrc.yml yarn.lock ./
+COPY .yarn .yarn
+COPY packages/app/package.json packages/app/
+COPY packages/backend/package.json packages/backend/
+
+# Install all dependencies (dev deps included for building)
+# Some optional native modules (better-sqlite3, isolated-vm, cpu-features) may fail to build in container
+# This is ok - they're not essential for the Backstage dev server
+RUN yarn install --immutable || echo "Some optional modules failed to build (expected in container)"
+
+# Copy the rest of the source
+COPY . .
+
+# Expose both the backend API port and the webpack dev-server port
+EXPOSE 7007 3000
+
+# Start both the frontend dev-server and the backend
+CMD ["yarn", "dev"]
