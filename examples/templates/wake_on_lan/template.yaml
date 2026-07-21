@@ -25,7 +25,7 @@ spec:
   steps:
     - id: send-wol
       name: Send Power On Request
-      action: webhook:wol
+      action: webhook:dispatch
       input:
         app: infra
         event: wol

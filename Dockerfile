@@ -87,6 +87,7 @@ USER backstage
 EXPOSE 7007
 
 ENV NODE_ENV=production
+ENV NODE_OPTIONS=--no-node-snapshot
 
 # APP_CONFIG_ARGS lets each environment choose its config stack.
 # Example: --config app-config.yaml --config app-config.k8s-prod.yaml

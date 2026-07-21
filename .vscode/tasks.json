@@ -1,0 +1,33 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Docker: Show computed tags",
+      "type": "shell",
+      "command": "make docker-tags",
+      "problemMatcher": []
+    },
+    {
+      "label": "Docker: Build intelligent version",
+      "type": "shell",
+      "command": "make docker-build",
+      "problemMatcher": []
+    },
+    {
+      "label": "Docker: Push intelligent version",
+      "type": "shell",
+      "command": "make docker-push",
+      "problemMatcher": []
+    },
+    {
+      "label": "Docker: Publish (build + push)",
+      "type": "shell",
+      "command": "make publish",
+      "problemMatcher": [],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    }
+  ]
+}

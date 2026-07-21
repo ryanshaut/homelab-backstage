@@ -155,6 +155,52 @@ The GitHub Actions workflow `.github/workflows/build-image.yml`:
 A separate `.github/workflows/ci.yml` runs lint + typecheck + unit tests on
 every pull request.
 
+## Local image publish workflow (VS Code)
+
+For local-first CI/CD, this repo includes an intelligent Docker tag workflow
+that mirrors the GitHub Actions tagging strategy and can be run from VS Code.
+
+### Tagging behavior
+
+- If `HEAD` is exactly a release tag `vX.Y.Z`:
+  - `X.Y.Z`
+  - `X.Y`
+  - `latest`
+  - `sha-<12-char git sha>`
+- Otherwise:
+  - next patch inferred from latest semver tag (or `0.1.0` if none)
+  - dev tag: `<next>-dev.<commits-since-tag>[-<branch>]`
+  - branch channel tag: `edge` (main/master) or `branch-<branch>`
+  - `sha-<12-char git sha>`
+
+### Make targets
+
+```bash
+make docker-tags    # preview tags for current commit
+make docker-build   # build image with all computed tags
+make docker-push    # push all computed tags
+make publish        # build + push (local CI/CD flow)
+```
+
+By default images publish to:
+
+- `image-local.int.shaut.us/homelab-backstage`
+
+Override registry/image when needed:
+
+```bash
+make publish REGISTRY=ghcr.io IMAGE_NAME=<owner>/<repo>
+```
+
+### VS Code Tasks
+
+Use **Terminal → Run Task** and choose:
+
+- `Docker: Show computed tags`
+- `Docker: Build intelligent version`
+- `Docker: Push intelligent version`
+- `Docker: Publish (build + push)`
+
 ---
 
 ## Known gaps / next steps
