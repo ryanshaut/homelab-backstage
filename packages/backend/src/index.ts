@@ -45,6 +45,7 @@ backend.add(import('@backstage/plugin-auth-backend-module-guest-provider'));
 // ── Catalog ─────────────────────────────────────────────────────────────────
 
 backend.add(import('@backstage/plugin-catalog-backend'));
+backend.add(import('@backstage/plugin-catalog-backend-module-github'));
 backend.add(
   import('@backstage/plugin-catalog-backend-module-scaffolder-entity-model'),
 );

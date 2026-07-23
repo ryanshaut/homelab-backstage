@@ -102,15 +102,25 @@ catalog:
     pullRequestBranchName: backstage-integration
   rules:
     - allow: [Component, System, API, Resource, Location, User, Group]
+    
+catalog:
+  rules:
+    - allow: [Component, System, API, Resource, Location, User, Group, Template]
   locations:
-    # Core example entities
     - type: file
       target: ./examples/entities.yaml
-    # Example template
     - type: file
-      target: ./examples/templates/**/template.yaml
+      target: /home/it-admin/projects/backstage/homelab-backstage/examples/templates/**/template.yaml
       rules:
         - allow: [Template]
+    - type: url
+      target: https://github.com/ryanshaut/homelab-backstage-assets/blob/main/catalog-info.yaml
+      rules:
+        - allow: [Location, Template]
+integrations:
+  github:
+    - host: github.com
+      token: ${GITHUB_TOKEN_ASSETS}
 
 permission:
   enabled: true
