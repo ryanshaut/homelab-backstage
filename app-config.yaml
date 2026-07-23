@@ -60,7 +60,7 @@ techdocs:
     type: 'local'
 
 auth:
-  environment: development
+  environment: production
   # Allow auth popup callback from both app and backend public origins.
   experimentalExtraAllowedOrigins:
     - ${APP_BASE_URL}
