@@ -12,6 +12,15 @@ const HOP_BY_HOP_HEADERS = new Set([
   'upgrade',
 ]);
 
+const buildWebhookBaseUrl = (configuredBaseUrl?: string) => {
+  const rawBaseUrl = configuredBaseUrl ?? 'http://localhost:3001';
+  const normalizedBaseUrl = rawBaseUrl
+    .replace(/\/$/, '')
+    .replace(/\/api\/webhooks\/?$/, '');
+
+  return `${normalizedBaseUrl}/api/webhooks`;
+};
+
 export const webhooksModule = createBackendModule({
   pluginId: 'app',
   moduleId: 'webhooks-router',
@@ -25,7 +34,7 @@ export const webhooksModule = createBackendModule({
       },
       async init({ rootConfig, rootHttpRouter, httpAuth, logger }) {
         const configuredBaseUrl = rootConfig.getOptionalString('webhooks.baseUrl');
-        const targetBaseUrl = (configuredBaseUrl ?? 'http://localhost:3001/api/webhooks').replace(/\/$/, '');
+        const targetBaseUrl = buildWebhookBaseUrl(configuredBaseUrl);
 
         const configuredTenant = rootConfig.getOptionalString('webhooks.tenant');
         const authEnv = rootConfig.getOptionalString('auth.environment') ?? 'development';

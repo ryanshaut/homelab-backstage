@@ -1,0 +1,47 @@
+apiVersion: scaffolder.backstage.io/v1beta3
+kind: Template
+metadata:
+  name: noop-testing-webhook-template
+  title: A noop-testing for testing
+  description: Dispatch a generic webhook request using template-defined routing
+spec:
+  owner: group:platform-team
+  type: automation
+
+  parameters:
+    - title: Request Data
+      required: []
+      properties: []
+
+  steps:
+    - id: dispatch
+      name: Dispatch Webhook
+      action: webhook:dispatch
+      input:
+        app: automation
+        event: noop-testing
+        method: POST
+        headers:
+          x-request-source: backstage-scaffolder
+        query:
+          version: v1
+        body:
+          operation: noop-testing
+
+  output:
+    links:
+      - title: Webhook Endpoint
+        url: ${{ steps['dispatch'].output.targetUrl }}
+      - title: Request Resource URL
+        url: ${{ steps['dispatch'].output.resourceUrl }}
+      - title: Webhook Status (Backstage UI)
+        url: /webhook-status?id=${{ steps['dispatch'].output.webhookId }}&statusUrl=${{ steps['dispatch'].output.statusUrl }}
+      - title: Webhook Status Endpoint
+        url: ${{ steps['dispatch'].output.statusUrl }}
+    text:
+      - title: Dispatch Result
+        content: |
+          Status: ${{ steps['dispatch'].output.status }}
+          Webhook ID: ${{ steps['dispatch'].output.webhookId }}
+          Response JSON:
+          ${{ steps['dispatch'].output.responseJson }}

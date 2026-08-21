@@ -58,11 +58,17 @@ spec:
         url: ${{ steps['request-vm'].output.targetUrl }}
       - title: Request Resource URL
         url: ${{ steps['request-vm'].output.resourceUrl }}
+      - title: Webhook Status (Backstage UI)
+        url: /webhook-status?id=${{ steps['request-vm'].output.webhookId }}&statusUrl=${{ steps['request-vm'].output.statusUrl }}
+      - title: Webhook Status Endpoint
+        url: ${{ steps['request-vm'].output.statusUrl }}
     text:
       - title: VM Request Result
         content: |
           Status: ${{ steps['request-vm'].output.status }}
-          Response: ${{ steps['request-vm'].output.response }}
+          Webhook ID: ${{ steps['request-vm'].output.webhookId }}
+          Response JSON:
+          ${{ steps['request-vm'].output.responseJson }}
 ---
 apiVersion: scaffolder.backstage.io/v1beta3
 kind: Template
@@ -131,8 +137,14 @@ spec:
         url: ${{ steps['dispatch'].output.targetUrl }}
       - title: Request Resource URL
         url: ${{ steps['dispatch'].output.resourceUrl }}
+      - title: Webhook Status (Backstage UI)
+        url: /webhook-status?id=${{ steps['dispatch'].output.webhookId }}&statusUrl=${{ steps['dispatch'].output.statusUrl }}
+      - title: Webhook Status Endpoint
+        url: ${{ steps['dispatch'].output.statusUrl }}
     text:
       - title: Dispatch Result
         content: |
           Status: ${{ steps['dispatch'].output.status }}
-          Response: ${{ steps['dispatch'].output.response }}
+          Webhook ID: ${{ steps['dispatch'].output.webhookId }}
+          Response JSON:
+          ${{ steps['dispatch'].output.responseJson }}

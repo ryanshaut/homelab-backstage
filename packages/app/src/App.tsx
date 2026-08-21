@@ -18,6 +18,7 @@ import {
 import { SignInPageBlueprint } from '@backstage/plugin-app-react';
 import catalogPlugin from '@backstage/plugin-catalog/alpha';
 import { navModule } from './modules/nav';
+import { webhookStatusPageModule } from './modules/webhookStatus';
 
 const keycloakAuthApiRef =
   createApiRef<
@@ -83,6 +84,7 @@ export default createApp({
   features: [
     catalogPlugin,
     navModule,
+    webhookStatusPageModule,
     keycloakAuthModule,
   ],
 });

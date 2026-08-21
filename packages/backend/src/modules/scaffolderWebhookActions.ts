@@ -10,12 +10,23 @@ type ActionDeps = {
   };
 };
 
+const buildWebhookBaseUrl = (configuredBaseUrl?: string) => {
+  const rawBaseUrl = configuredBaseUrl ?? 'http://localhost:3001';
+  const normalizedBaseUrl = rawBaseUrl
+    .replace(/\/$/, '')
+    .replace(/\/api\/webhooks\/?$/, '');
+
+  return `${normalizedBaseUrl}/api/webhooks`;
+};
+
+const buildOperatorStatusUrl = (webhookBaseUrl: string, webhookId: string) => {
+  const operatorBaseUrl = webhookBaseUrl.replace(/\/api\/webhooks$/, '');
+  return `${operatorBaseUrl}/api/operator/webhooks/${encodeURIComponent(webhookId)}/status`;
+};
+
 const getWebhookRouting = (rootConfig: ActionDeps['rootConfig']) => {
   const configuredBaseUrl = rootConfig.getOptionalString('webhooks.baseUrl');
-  const baseUrl = (configuredBaseUrl ?? 'http://localhost:3001/api/webhooks').replace(
-    /\/$/,
-    '',
-  );
+  const baseUrl = buildWebhookBaseUrl(configuredBaseUrl);
 
   const configuredTenant = rootConfig.getOptionalString('webhooks.tenant');
   const authEnv = rootConfig.getOptionalString('auth.environment') ?? 'development';
@@ -48,19 +59,26 @@ const buildResourceUrl = (
   event: string,
   responseBody: unknown,
 ): string | undefined => {
-  const id =
-    responseBody &&
-    typeof responseBody === 'object' &&
-    'id' in responseBody &&
-    typeof (responseBody as { id?: unknown }).id === 'string'
-      ? (responseBody as { id: string }).id
-      : undefined;
+  const id = extractWebhookId(responseBody);
 
   if (!id) {
     return undefined;
   }
 
   return `${baseUrl}/${encodeURIComponent(tenant)}/${encodeURIComponent(app)}/${encodeURIComponent(event)}/${encodeURIComponent(id)}`;
+};
+
+const extractWebhookId = (responseBody: unknown): string | undefined => {
+  if (
+    responseBody &&
+    typeof responseBody === 'object' &&
+    'id' in responseBody &&
+    typeof (responseBody as { id?: unknown }).id === 'string'
+  ) {
+    return (responseBody as { id: string }).id;
+  }
+
+  return undefined;
 };
 
 const createDispatchAction = ({ rootConfig }: ActionDeps) =>
@@ -84,8 +102,11 @@ const createDispatchAction = ({ rootConfig }: ActionDeps) =>
       output: {
         status: z => z.number(),
         targetUrl: z => z.string(),
+        webhookId: z => z.string().optional(),
+        statusUrl: z => z.string().optional(),
         resourceUrl: z => z.string().optional(),
         response: z => z.any().optional(),
+        responseJson: z => z.string().optional(),
       },
     },
     async handler(ctx) {
@@ -143,13 +164,26 @@ const createDispatchAction = ({ rootConfig }: ActionDeps) =>
         ctx.input.event,
         responseBody,
       );
+      const webhookId = extractWebhookId(responseBody);
 
       ctx.output('status', response.status);
       ctx.output('targetUrl', targetUrl);
+      if (webhookId) {
+        ctx.output('webhookId', webhookId);
+        ctx.output('statusUrl', buildOperatorStatusUrl(baseUrl, webhookId));
+      }
       if (resourceUrl) {
         ctx.output('resourceUrl', resourceUrl);
       }
       ctx.output('response', responseBody);
+      if (responseBody !== undefined) {
+        ctx.output(
+          'responseJson',
+          typeof responseBody === 'string'
+            ? responseBody
+            : JSON.stringify(responseBody, null, 2),
+        );
+      }
     },
   });
 
@@ -173,8 +207,11 @@ const createRequestVmAction = ({ rootConfig }: ActionDeps) =>
       output: {
         status: z => z.number(),
         targetUrl: z => z.string(),
+        webhookId: z => z.string().optional(),
+        statusUrl: z => z.string().optional(),
         resourceUrl: z => z.string().optional(),
         response: z => z.any().optional(),
+        responseJson: z => z.string().optional(),
       },
     },
     async handler(ctx) {
@@ -232,13 +269,26 @@ const createRequestVmAction = ({ rootConfig }: ActionDeps) =>
         ctx.input.event,
         responseBody,
       );
+      const webhookId = extractWebhookId(responseBody);
 
       ctx.output('status', response.status);
       ctx.output('targetUrl', targetUrl);
+      if (webhookId) {
+        ctx.output('webhookId', webhookId);
+        ctx.output('statusUrl', buildOperatorStatusUrl(baseUrl, webhookId));
+      }
       if (resourceUrl) {
         ctx.output('resourceUrl', resourceUrl);
       }
       ctx.output('response', responseBody);
+      if (responseBody !== undefined) {
+        ctx.output(
+          'responseJson',
+          typeof responseBody === 'string'
+            ? responseBody
+            : JSON.stringify(responseBody, null, 2),
+        );
+      }
     },
   });
 
