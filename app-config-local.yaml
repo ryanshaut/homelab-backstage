@@ -1,16 +1,17 @@
-# Single-origin local Docker overlay
+# # Single-origin local Docker overlay
 
-app:
-  baseUrl: http://localhost:3000
+# app:
+#   baseUrl: http://localhost:3000
 
-backend:
-  baseUrl: http://localhost:7007
-  cors:
-    origin:
-      - http://localhost:3000
+# backend:
+#   baseUrl: http://10.10.100.61:7007
+#   cors:
+#     origin:
+#       - http://10.10.100.61:3000
 
-auth:
-  environment: production
-  experimentalExtraAllowedOrigins:
-    - http://localhost:7007
-    - http://localhost:3000
+# auth:
+#   environment: production
+#   experimentalExtraAllowedOrigins:
+#     - http://localhost:7007
+#     - http://localhost:3000
+#     - http://10.10.100.61:3000

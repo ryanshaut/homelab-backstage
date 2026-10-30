@@ -152,6 +152,11 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-backstage}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-backstage}
       POSTGRES_DB: ${POSTGRES_DB:-backstage}
+      WEBHOOK_BASE_URL: ${WEBHOOK_BASE_URL}
+      APPROVALS_URL: ${APPROVALS_URL:-https://approveme-api.apps.shaut.us/approvals}
+      KC_SA_PW: ${KC_SA_PW:-}
+      KC_SA_UN: ${KC_SA_UN:-}
+      KC_ODIC_DISCOVERY_URI: ${KC_ODIC_DISCOVERY_URI:-}
       # Backstage secrets
       BACKEND_SECRET: ${BACKEND_SECRET}
       SESSION_SECRET: ${SESSION_SECRET}

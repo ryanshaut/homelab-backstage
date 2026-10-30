@@ -133,6 +133,24 @@ Required env vars: `AUTH_OIDC_*`, `KEYCLOAK_*`
 - Method, query string, body, and headers are passed through for compatibility
   with external webhook backends.
 
+### Template approvals
+
+Templates can pause side effects behind the `approval:dispatch` action. The
+action requests a one-time callback, submits the approval, and records the
+request in PostgreSQL. A scheduled backend task polls for a decision and
+relaunches the template from the beginning with a database-verified
+`approvalId`. Put the approval step before non-idempotent side effects, and
+condition every later step on
+`steps['require-approval'].output.approved`. The resumed task uses backend
+service credentials; template steps should pass any required requester context
+as template values rather than relying on `user.entity`.
+
+Configure `WEBHOOK_BASE_URL`, `APPROVALS_URL`, `KC_ODIC_DISCOVERY_URI`,
+`KC_SA_UN`, and `KC_SA_PW` in the backend environment. `APPROVALS_URL` defaults
+to the approval service URL used by the example. The callback status endpoint
+is linked from the template task and only returns details to the requesting
+Backstage user.
+
 ---
 
 ## Production image pipeline

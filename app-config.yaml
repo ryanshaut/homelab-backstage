@@ -28,8 +28,13 @@ backend:
     keys:
       - secret: ${BACKEND_SECRET}
   database:
-    client: better-sqlite3
-    connection: ':memory:'
+    # client: pg
+    # connection:
+    #   host: ${POSTGRES_HOST:-localhost}
+    #   port: ${POSTGRES_PORT:-5432}
+    #   user: ${POSTGRES_USER:-backstage}
+    #   password: ${POSTGRES_PASSWORD:-backstage}
+    #   database: ${POSTGRES_DB:-backstage}
   actions:
     pluginSources:
       - auth

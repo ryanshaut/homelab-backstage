@@ -6,13 +6,17 @@
  * https://backstage.io/docs/backend-system/building-backends/index
  */
 import { createBackend } from '@backstage/backend-defaults';
+import { approvalsModule } from './modules/approvals';
 import { scaffolderWebhookActionsModule } from './modules/scaffolderWebhookActions';
 import { webhooksModule } from './modules/webhooks';
+import {PongPlugin} from './modules/pong'
 
 const backend = createBackend();
 
 backend.add(webhooksModule);
 backend.add(scaffolderWebhookActionsModule);
+backend.add(approvalsModule);
+backend.add(PongPlugin);
 
 // ── Core framework plugins ──────────────────────────────────────────────────
 

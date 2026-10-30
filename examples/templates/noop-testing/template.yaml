@@ -9,13 +9,29 @@ spec:
   type: automation
 
   parameters:
-    - title: Request Data
-      required: []
-      properties: []
+    - title: Approval
+      properties:
+        approvalId:
+          title: Approval ID
+          type: string
+          ui:widget: hidden
 
   steps:
+    - id: require-approval
+      name: Request approval
+      action: approval:dispatch
+      input:
+        approvalSubject: user::ryan@shaut.us
+        summary: Run the noop-testing webhook workflow
+        approvalId: ${{ parameters.approvalId }}
+        values: ${{ parameters }}
+        data:
+          operation: noop-testing
+          template: noop-testing-webhook-template
+
     - id: dispatch
       name: Dispatch Webhook
+      if: ${{ steps['require-approval'].output.approved }}
       action: webhook:dispatch
       input:
         app: automation
@@ -30,6 +46,8 @@ spec:
 
   output:
     links:
+      - title: Approval Status
+        url: ${{ steps['require-approval'].output.statusUrl }}
       - title: Webhook Endpoint
         url: ${{ steps['dispatch'].output.targetUrl }}
       - title: Request Resource URL
@@ -39,6 +57,11 @@ spec:
       - title: Webhook Status Endpoint
         url: ${{ steps['dispatch'].output.statusUrl }}
     text:
+      - title: Approval Result
+        content: |
+          Status: ${{ steps['require-approval'].output.status }}
+          Approval ID: ${{ steps['require-approval'].output.approvalId }}
+          Reason: ${{ steps['require-approval'].output.reason }}
       - title: Dispatch Result
         content: |
           Status: ${{ steps['dispatch'].output.status }}
