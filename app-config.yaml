@@ -16,7 +16,9 @@ backend:
     port: 7007
     host: 0.0.0.0
   csp:
-    connect-src: ["'self'", 'http:', 'https:']
+    # Browser only talks to this origin; upstream services (incl. the webhook
+    # backend) are reached through backend routes.
+    connect-src: ["'self'"]
   cors:
     # Allow frontend calls from configured app/backend origins.
     origin:
@@ -36,21 +38,20 @@ backend:
       - catalog
       - scaffolder
 
-# NOTE: Disabled for Keycloak auth troubleshooting.
-# Re-enable when testing SCM integrations.
-# integrations:
-#   github:
-#     - host: github.com
-#       token: ${GITHUB_TOKEN}
-
 proxy: {}
 
 webhooks:
-  # Base URL of the generic webhook backend. The tenant/app/event suffix
-  # is appended by the Backstage backend route.
-  baseUrl: ${WEBHOOK_BASE_URL}
-  # Optional explicit tenant override. If unset, defaults to backstage-<auth.environment>.
-  tenant: ${WEBHOOK_TENANT}
+  # Upstream generic webhook backend. Only the Backstage backend calls it:
+  #   /api/webhooks/<app>/<event>       -> <baseUrl>/api/webhooks/<tenant>/<app>/<event>
+  #   /api/webhooks/operator/<id>/status -> <baseUrl>/api/operator/webhooks/<id>/status
+  baseUrl: ${WEBHOOK_BASE_URL:-http://localhost:3001}
+  # Tenant path segment; set explicitly per environment.
+  tenant: ${WEBHOOK_TENANT:-backstage-production}
+  timeoutMs: 30000
+  # Optional HMAC-SHA256 signing secret shared with the webhook backend.
+  # Upstream verifies x-backstage-signature over
+  #   v1:<x-backstage-timestamp>:<METHOD>:<path?query>:<raw body>
+  signingSecret: ${WEBHOOK_SIGNING_SECRET:-}
 
 techdocs:
   builder: 'local'
@@ -74,12 +75,13 @@ auth:
         metadataUrl: ${AUTH_OIDC_METADATA_URL}
         clientId: ${AUTH_OIDC_CLIENT_ID}
         clientSecret: ${AUTH_OIDC_CLIENT_SECRET}
-        # Prompt for login even if already authenticated in Keycloak
+        # Reuse an existing Keycloak session instead of forcing a login prompt.
         prompt: auto
         signIn:
           resolvers:
-            # Match OIDC email claim to Backstage user entity profile email.
-            - resolver: emailMatchingUserEntityProfileEmail
+            # Match the OIDC `sub` (Keycloak user ID) to the keycloak.org/id
+            # annotation set by the keycloakOrg catalog provider.
+            - resolver: keycloakIdMatchingUserEntityAnnotation
     # Force Keycloak sign-in in all environments.
     guest: null
 
@@ -102,17 +104,18 @@ catalog:
     pullRequestBranchName: backstage-integration
   rules:
     - allow: [Component, System, API, Resource, Location, User, Group]
+  # File targets resolve against the backend's working directory:
+  # packages/backend under `yarn start`; container overlays override with ./examples.
   locations:
     - type: file
-      target: ./examples/entities.yaml
-    - type: file
-      target: /home/it-admin/projects/backstage/homelab-backstage/examples/templates/**/template.yaml
+      target: ../../examples/templates/*/template.yaml
       rules:
         - allow: [Template]
     - type: url
       target: https://github.com/ryanshaut/homelab-backstage-assets/blob/main/catalog-info.yaml
       rules:
         - allow: [Location, Template]
+
 integrations:
   github:
     - host: github.com
@@ -120,6 +123,9 @@ integrations:
 
 permission:
   enabled: true
+  # Groups allowed to run templates / scaffolder actions. Unset = everyone.
+  # templateRunnerGroups:
+  #   - group:default/platform-team
 
 mcpActions:
   name: 'Homelab Backstage'

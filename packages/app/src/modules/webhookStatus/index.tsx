@@ -1,4 +1,7 @@
-import { createFrontendModule, PageBlueprint } from '@backstage/frontend-plugin-api';
+import {
+  createFrontendModule,
+  PageBlueprint,
+} from '@backstage/frontend-plugin-api';
 import AutorenewIcon from '@material-ui/icons/Autorenew';
 
 export const webhookStatusPageModule = createFrontendModule({

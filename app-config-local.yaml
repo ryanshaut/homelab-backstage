@@ -1,4 +1,4 @@
-# Single-origin local Docker overlay
+# Local development overlay for `yarn start` (frontend :3000, backend :7007)
 
 app:
   baseUrl: http://localhost:3000

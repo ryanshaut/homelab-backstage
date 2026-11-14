@@ -1,4 +1,4 @@
-# Kubernetes production overlay
+# Container / Kubernetes production overlay (the Dockerfile's default config stack)
 
 app:
   baseUrl: ${APP_BASE_URL}
@@ -15,3 +15,16 @@ auth:
   experimentalExtraAllowedOrigins:
     - ${APP_BASE_URL}
     - ${BACKEND_BASE_URL}
+
+catalog:
+  # Container working directory is /app. Arrays replace (not merge) the base
+  # config, so every location is repeated here.
+  locations:
+    - type: file
+      target: ./examples/templates/*/template.yaml
+      rules:
+        - allow: [Template]
+    - type: url
+      target: https://github.com/ryanshaut/homelab-backstage-assets/blob/main/catalog-info.yaml
+      rules:
+        - allow: [Location, Template]

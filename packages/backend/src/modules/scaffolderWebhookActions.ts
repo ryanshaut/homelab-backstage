@@ -1,99 +1,155 @@
-import { coreServices, createBackendModule } from '@backstage/backend-plugin-api';
+import {
+  coreServices,
+  createBackendModule,
+} from '@backstage/backend-plugin-api';
 import {
   createTemplateAction,
   scaffolderActionsExtensionPoint,
 } from '@backstage/plugin-scaffolder-node';
+import {
+  BACKSTAGE_HEADER_PREFIX,
+  buildEventUrl,
+  buildResourceUrl,
+  buildStatusUrl,
+  extractWebhookId,
+  PRINCIPAL_HEADER,
+  readResponseBody,
+  readWebhookRouting,
+  sendWebhook,
+  TASK_ID_HEADER,
+  WebhookRouting,
+} from '../plugins/webhooks/client';
 
-type ActionDeps = {
-  rootConfig: {
-    getOptionalString(key: string): string | undefined;
-  };
+const MAX_ERROR_BODY_CHARS = 2000;
+
+type WebhookRequest = {
+  app: string;
+  event: string;
+  method: string;
+  headers?: Record<string, string>;
+  query?: Record<string, string | number | boolean>;
+  /** Strings are sent as-is; anything else is JSON encoded. */
+  body?: unknown;
 };
 
-const buildWebhookBaseUrl = (configuredBaseUrl?: string) => {
-  const rawBaseUrl = configuredBaseUrl ?? 'http://localhost:3001';
-  const normalizedBaseUrl = rawBaseUrl
-    .replace(/\/$/, '')
-    .replace(/\/api\/webhooks\/?$/, '');
-
-  return `${normalizedBaseUrl}/api/webhooks`;
+type WebhookCallContext = {
+  taskId: string;
+  userRef?: string;
+  signal?: AbortSignal;
 };
 
-const buildOperatorStatusUrl = (webhookBaseUrl: string, webhookId: string) => {
-  const operatorBaseUrl = webhookBaseUrl.replace(/\/api\/webhooks$/, '');
-  return `${operatorBaseUrl}/api/operator/webhooks/${encodeURIComponent(webhookId)}/status`;
+type WebhookResult = {
+  status: number;
+  targetUrl: string;
+  webhookId?: string;
+  statusUrl?: string;
+  resourceUrl?: string;
+  response?: unknown;
+  responseJson?: string;
 };
 
-const getWebhookRouting = (rootConfig: ActionDeps['rootConfig']) => {
-  const configuredBaseUrl = rootConfig.getOptionalString('webhooks.baseUrl');
-  const baseUrl = buildWebhookBaseUrl(configuredBaseUrl);
+/** Minimal shape of ctx.output shared by both actions (method syntax keeps it assignable). */
+type OutputSink = { output(name: string, value: unknown): void };
 
-  const configuredTenant = rootConfig.getOptionalString('webhooks.tenant');
-  const authEnv = rootConfig.getOptionalString('auth.environment') ?? 'development';
-  const tenant = configuredTenant ?? `backstage-${authEnv}`;
+/**
+ * Single code path for every webhook action: builds the URL, attaches
+ * Backstage-controlled identity headers, sends (signed, with timeout), and
+ * shapes the outputs.
+ */
+async function callWebhook(
+  routing: WebhookRouting,
+  request: WebhookRequest,
+  context: WebhookCallContext,
+): Promise<WebhookResult> {
+  const targetUrl = buildEventUrl(
+    routing,
+    request.app,
+    request.event,
+    request.query,
+  );
 
-  return { baseUrl, tenant };
-};
+  // Template-supplied headers are trusted (templates come from the catalog),
+  // except the x-backstage-* namespace, which only Backstage may set.
+  const headers = new Headers();
+  for (const [name, value] of Object.entries(request.headers ?? {})) {
+    if (!name.toLowerCase().startsWith(BACKSTAGE_HEADER_PREFIX)) {
+      headers.set(name, value);
+    }
+  }
+  headers.set(TASK_ID_HEADER, context.taskId);
+  if (context.userRef) {
+    headers.set(PRINCIPAL_HEADER, context.userRef);
+  }
 
-const buildTargetUrl = (
-  baseUrl: string,
-  tenant: string,
-  app: string,
-  event: string,
-  query?: Record<string, string | number | boolean>,
-) => {
-  const queryString = new URLSearchParams();
-  if (query) {
-    for (const [key, value] of Object.entries(query)) {
-      queryString.append(key, String(value));
+  let body: string | undefined;
+  if (request.body !== undefined) {
+    if (typeof request.body === 'string') {
+      body = request.body;
+    } else {
+      body = JSON.stringify(request.body);
+      if (!headers.has('content-type')) {
+        headers.set('content-type', 'application/json');
+      }
     }
   }
 
-  return `${baseUrl}/${encodeURIComponent(tenant)}/${encodeURIComponent(app)}/${encodeURIComponent(event)}${queryString.toString() ? `?${queryString.toString()}` : ''}`;
-};
+  const response = await sendWebhook(routing, targetUrl, {
+    method: request.method,
+    headers,
+    body,
+    signal: context.signal,
+  });
+  const { text, body: responseBody } = await readResponseBody(response);
 
-const buildResourceUrl = (
-  baseUrl: string,
-  tenant: string,
-  app: string,
-  event: string,
-  responseBody: unknown,
-): string | undefined => {
-  const id = extractWebhookId(responseBody);
-
-  if (!id) {
-    return undefined;
+  if (!response.ok) {
+    throw new Error(
+      `Webhook request failed (${
+        response.status
+      }) at ${targetUrl}: ${text.slice(0, MAX_ERROR_BODY_CHARS)}`,
+    );
   }
 
-  return `${baseUrl}/${encodeURIComponent(tenant)}/${encodeURIComponent(app)}/${encodeURIComponent(event)}/${encodeURIComponent(id)}`;
-};
+  const webhookId = extractWebhookId(responseBody);
+  return {
+    status: response.status,
+    targetUrl,
+    webhookId,
+    statusUrl: webhookId ? buildStatusUrl(routing, webhookId) : undefined,
+    resourceUrl: webhookId
+      ? buildResourceUrl(routing, request.app, request.event, webhookId)
+      : undefined,
+    response: responseBody,
+    responseJson: toResponseJson(responseBody),
+  };
+}
 
-const extractWebhookId = (responseBody: unknown): string | undefined => {
-  if (
-    responseBody &&
-    typeof responseBody === 'object' &&
-    'id' in responseBody &&
-    typeof (responseBody as { id?: unknown }).id === 'string'
-  ) {
-    return (responseBody as { id: string }).id;
+function toResponseJson(body: unknown): string | undefined {
+  if (body === undefined || typeof body === 'string') {
+    return body;
   }
+  return JSON.stringify(body, null, 2);
+}
 
-  return undefined;
-};
+function emitOutputs(ctx: OutputSink, result: WebhookResult) {
+  for (const [name, value] of Object.entries(result)) {
+    if (value !== undefined) {
+      ctx.output(name, value);
+    }
+  }
+}
 
-const createDispatchAction = ({ rootConfig }: ActionDeps) =>
+const createDispatchAction = (routing: WebhookRouting) =>
   createTemplateAction({
     id: 'webhook:dispatch',
     description:
-      'Dispatch an arbitrary webhook request using template-defined app/event routing',
+      'Dispatch an arbitrary webhook request using template-defined app/event routing. ' +
+      'The initiating user and task ID are sent as x-backstage-principal / x-backstage-task-id headers.',
     schema: {
       input: {
         app: z => z.string(),
         event: z => z.string(),
         method: z =>
-          z
-            .enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE'])
-            .default('POST'),
+          z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']).default('POST'),
         headers: z => z.record(z.string()).optional(),
         query: z =>
           z.record(z.union([z.string(), z.number(), z.boolean()])).optional(),
@@ -110,84 +166,16 @@ const createDispatchAction = ({ rootConfig }: ActionDeps) =>
       },
     },
     async handler(ctx) {
-      const { baseUrl, tenant } = getWebhookRouting(rootConfig);
-      const targetUrl = buildTargetUrl(
-        baseUrl,
-        tenant,
-        ctx.input.app,
-        ctx.input.event,
-        ctx.input.query,
-      );
-
-      const headers: Record<string, string> = {
-        ...(ctx.input.headers ?? {}),
-      };
-
-      let requestBody: string | undefined;
-      if (ctx.input.body !== undefined) {
-        if (typeof ctx.input.body === 'string') {
-          requestBody = ctx.input.body;
-        } else {
-          requestBody = JSON.stringify(ctx.input.body);
-          if (!Object.keys(headers).some(h => h.toLowerCase() === 'content-type')) {
-            headers['content-type'] = 'application/json';
-          }
-        }
-      }
-
-      const response = await fetch(targetUrl, {
-        method: ctx.input.method,
-        headers,
-        body: ['GET', 'HEAD'].includes(ctx.input.method)
-          ? undefined
-          : requestBody,
+      const result = await callWebhook(routing, ctx.input, {
+        taskId: ctx.task.id,
+        userRef: ctx.user?.ref,
+        signal: ctx.signal,
       });
-
-      const responseText = await response.text();
-      let responseBody: unknown = responseText;
-      try {
-        responseBody = responseText ? JSON.parse(responseText) : undefined;
-      } catch {
-        // Keep plain text response when upstream does not return JSON.
-      }
-
-      if (!response.ok) {
-        throw new Error(
-          `Webhook request failed (${response.status}) at ${targetUrl}: ${responseText}`,
-        );
-      }
-
-      const resourceUrl = buildResourceUrl(
-        baseUrl,
-        tenant,
-        ctx.input.app,
-        ctx.input.event,
-        responseBody,
-      );
-      const webhookId = extractWebhookId(responseBody);
-
-      ctx.output('status', response.status);
-      ctx.output('targetUrl', targetUrl);
-      if (webhookId) {
-        ctx.output('webhookId', webhookId);
-        ctx.output('statusUrl', buildOperatorStatusUrl(baseUrl, webhookId));
-      }
-      if (resourceUrl) {
-        ctx.output('resourceUrl', resourceUrl);
-      }
-      ctx.output('response', responseBody);
-      if (responseBody !== undefined) {
-        ctx.output(
-          'responseJson',
-          typeof responseBody === 'string'
-            ? responseBody
-            : JSON.stringify(responseBody, null, 2),
-        );
-      }
+      emitOutputs(ctx, result);
     },
   });
 
-const createRequestVmAction = ({ rootConfig }: ActionDeps) =>
+const createRequestVmAction = (routing: WebhookRouting) =>
   createTemplateAction({
     id: 'webhook:request-vm',
     description: 'Request a VM through the generic webhook backend',
@@ -201,7 +189,8 @@ const createRequestVmAction = ({ rootConfig }: ActionDeps) =>
         memoryGb: z => z.number().positive().default(4),
         diskGb: z => z.number().positive().default(40),
         headers: z => z.record(z.string()).optional(),
-        query: z => z.record(z.union([z.string(), z.number(), z.boolean()])).optional(),
+        query: z =>
+          z.record(z.union([z.string(), z.number(), z.boolean()])).optional(),
         metadata: z => z.record(z.any()).optional(),
       },
       output: {
@@ -215,80 +204,35 @@ const createRequestVmAction = ({ rootConfig }: ActionDeps) =>
       },
     },
     async handler(ctx) {
-      const { baseUrl, tenant } = getWebhookRouting(rootConfig);
-      const targetUrl = buildTargetUrl(
-        baseUrl,
-        tenant,
-        ctx.input.app,
-        ctx.input.event,
-        ctx.input.query,
+      const { app, event, headers, query, metadata } = ctx.input;
+      const result = await callWebhook(
+        routing,
+        {
+          app,
+          event,
+          method: 'POST',
+          headers,
+          query,
+          body: {
+            vm: {
+              name: ctx.input.vmName,
+              image: ctx.input.image,
+              cpu: ctx.input.cpu,
+              memoryGb: ctx.input.memoryGb,
+              diskGb: ctx.input.diskGb,
+            },
+            metadata: {
+              ...metadata,
+              // Set server-side after the spread so templates cannot override.
+              requestedBy: ctx.user?.ref,
+              templateName: ctx.templateInfo?.entity?.metadata.name,
+              taskId: ctx.task.id,
+            },
+          },
+        },
+        { taskId: ctx.task.id, userRef: ctx.user?.ref, signal: ctx.signal },
       );
-
-      const payload = {
-        vm: {
-          name: ctx.input.vmName,
-          image: ctx.input.image,
-          cpu: ctx.input.cpu,
-          memoryGb: ctx.input.memoryGb,
-          diskGb: ctx.input.diskGb,
-        },
-        metadata: {
-          ...ctx.input.metadata,
-          templateName: ctx.templateInfo?.entity?.metadata.name,
-          taskId: ctx.task.id,
-        },
-      };
-
-      const response = await fetch(targetUrl, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          ...(ctx.input.headers ?? {}),
-        },
-        body: JSON.stringify(payload),
-      });
-
-      const responseText = await response.text();
-      let responseBody: unknown = responseText;
-      try {
-        responseBody = responseText ? JSON.parse(responseText) : undefined;
-      } catch {
-        // Keep plain text response when upstream does not return JSON.
-      }
-
-      if (!response.ok) {
-        throw new Error(
-          `VM request failed (${response.status}) at ${targetUrl}: ${responseText}`,
-        );
-      }
-
-      const resourceUrl = buildResourceUrl(
-        baseUrl,
-        tenant,
-        ctx.input.app,
-        ctx.input.event,
-        responseBody,
-      );
-      const webhookId = extractWebhookId(responseBody);
-
-      ctx.output('status', response.status);
-      ctx.output('targetUrl', targetUrl);
-      if (webhookId) {
-        ctx.output('webhookId', webhookId);
-        ctx.output('statusUrl', buildOperatorStatusUrl(baseUrl, webhookId));
-      }
-      if (resourceUrl) {
-        ctx.output('resourceUrl', resourceUrl);
-      }
-      ctx.output('response', responseBody);
-      if (responseBody !== undefined) {
-        ctx.output(
-          'responseJson',
-          typeof responseBody === 'string'
-            ? responseBody
-            : JSON.stringify(responseBody, null, 2),
-        );
-      }
+      emitOutputs(ctx, result);
     },
   });
 
@@ -299,12 +243,13 @@ export const scaffolderWebhookActionsModule = createBackendModule({
     reg.registerInit({
       deps: {
         scaffolderActions: scaffolderActionsExtensionPoint,
-        rootConfig: coreServices.rootConfig,
+        config: coreServices.rootConfig,
       },
-      async init({ scaffolderActions, rootConfig }) {
+      async init({ scaffolderActions, config }) {
+        const routing = readWebhookRouting(config);
         scaffolderActions.addActions(
-          createDispatchAction({ rootConfig }),
-          createRequestVmAction({ rootConfig }),
+          createDispatchAction(routing),
+          createRequestVmAction(routing),
         );
       },
     });

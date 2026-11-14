@@ -1,4 +1,6 @@
-# Single-origin local Docker overlay
+# Single-origin local Docker overlay (production image on localhost:7007)
+#
+#   docker run ... -e APP_CONFIG_ARGS="--config app-config.yaml --config app-config.local-docker.yaml"
 
 app:
   baseUrl: http://localhost:7007
@@ -13,12 +15,25 @@ auth:
   environment: development
   experimentalExtraAllowedOrigins:
     - http://localhost:7007
+  providers:
+    # Same Keycloak client as production, keyed for auth.environment=development.
+    oidc:
+      development:
+        metadataUrl: ${AUTH_OIDC_METADATA_URL}
+        clientId: ${AUTH_OIDC_CLIENT_ID}
+        clientSecret: ${AUTH_OIDC_CLIENT_SECRET}
+        prompt: auto
+        signIn:
+          resolvers:
+            - resolver: keycloakIdMatchingUserEntityAnnotation
+
+webhooks:
+  tenant: ${WEBHOOK_TENANT:-backstage-development}
 
 catalog:
+  # Container working directory is /app.
   locations:
     - type: file
-      target: ./examples/entities.yaml
-    - type: file
-      target: ./examples/template/template.yaml
+      target: ./examples/templates/*/template.yaml
       rules:
         - allow: [Template]

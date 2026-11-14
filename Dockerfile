@@ -91,4 +91,4 @@ ENV NODE_OPTIONS=--no-node-snapshot
 
 # APP_CONFIG_ARGS lets each environment choose its config stack.
 # Example: --config app-config.yaml --config app-config.k8s-prod.yaml
-CMD ["sh", "-c", "node packages/backend/dist/index.cjs.js ${APP_CONFIG_ARGS:---config app-config.yaml}"]
+CMD ["sh", "-c", "node packages/backend/dist/index.cjs.js ${APP_CONFIG_ARGS:---config app-config.yaml --config app-config.k8s-prod.yaml}"]

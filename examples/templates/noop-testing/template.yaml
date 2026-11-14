@@ -11,7 +11,7 @@ spec:
   parameters:
     - title: Request Data
       required: []
-      properties: []
+      properties: {}
 
   steps:
     - id: dispatch
@@ -30,18 +30,16 @@ spec:
 
   output:
     links:
-      - title: Webhook Endpoint
-        url: ${{ steps['dispatch'].output.targetUrl }}
-      - title: Request Resource URL
-        url: ${{ steps['dispatch'].output.resourceUrl }}
-      - title: Webhook Status (Backstage UI)
-        url: /webhook-status?id=${{ steps['dispatch'].output.webhookId }}&statusUrl=${{ steps['dispatch'].output.statusUrl }}
-      - title: Webhook Status Endpoint
-        url: ${{ steps['dispatch'].output.statusUrl }}
+      - title: Webhook Status
+        icon: dashboard
+        url: /webhook-status?id=${{ steps['dispatch'].output.webhookId }}
     text:
       - title: Dispatch Result
         content: |
           Status: ${{ steps['dispatch'].output.status }}
           Webhook ID: ${{ steps['dispatch'].output.webhookId }}
+          Endpoint: ${{ steps['dispatch'].output.targetUrl }}
+          Resource: ${{ steps['dispatch'].output.resourceUrl }}
+
           Response JSON:
           ${{ steps['dispatch'].output.responseJson }}

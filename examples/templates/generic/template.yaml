@@ -49,26 +49,24 @@ spec:
         cpu: ${{ parameters.cpu }}
         memoryGb: ${{ parameters.memoryGb }}
         diskGb: ${{ parameters.diskGb }}
-        metadata:
-          requestedBy: ${{ user.entity.metadata.name }}
+        # metadata.requestedBy / taskId / templateName are added server-side.
 
   output:
     links:
-      - title: Webhook Endpoint
-        url: ${{ steps['request-vm'].output.targetUrl }}
-      - title: Request Resource URL
-        url: ${{ steps['request-vm'].output.resourceUrl }}
-      - title: Webhook Status (Backstage UI)
-        url: /webhook-status?id=${{ steps['request-vm'].output.webhookId }}&statusUrl=${{ steps['request-vm'].output.statusUrl }}
-      - title: Webhook Status Endpoint
-        url: ${{ steps['request-vm'].output.statusUrl }}
+      - title: Webhook Status
+        icon: dashboard
+        url: /webhook-status?id=${{ steps['request-vm'].output.webhookId }}
     text:
       - title: VM Request Result
         content: |
           Status: ${{ steps['request-vm'].output.status }}
           Webhook ID: ${{ steps['request-vm'].output.webhookId }}
+          Endpoint: ${{ steps['request-vm'].output.targetUrl }}
+          Resource: ${{ steps['request-vm'].output.resourceUrl }}
+
           Response JSON:
           ${{ steps['request-vm'].output.responseJson }}
+
 ---
 apiVersion: scaffolder.backstage.io/v1beta3
 kind: Template
@@ -119,6 +117,8 @@ spec:
         app: automation
         event: resource-change
         method: POST
+        # x-backstage-principal (initiating user) and x-backstage-task-id are
+        # added by the action; templates cannot set x-backstage-* headers.
         headers:
           x-request-source: backstage-scaffolder
         query:
@@ -128,23 +128,20 @@ spec:
           operation: ${{ parameters.operation }}
           reason: ${{ parameters.reason }}
           priority: ${{ parameters.priority }}
-          requestedBy: ${{ user.entity.metadata.name }}
           templateName: dispatch-webhook-template
 
   output:
     links:
-      - title: Webhook Endpoint
-        url: ${{ steps['dispatch'].output.targetUrl }}
-      - title: Request Resource URL
-        url: ${{ steps['dispatch'].output.resourceUrl }}
-      - title: Webhook Status (Backstage UI)
-        url: /webhook-status?id=${{ steps['dispatch'].output.webhookId }}&statusUrl=${{ steps['dispatch'].output.statusUrl }}
-      - title: Webhook Status Endpoint
-        url: ${{ steps['dispatch'].output.statusUrl }}
+      - title: Webhook Status
+        icon: dashboard
+        url: /webhook-status?id=${{ steps['dispatch'].output.webhookId }}
     text:
       - title: Dispatch Result
         content: |
           Status: ${{ steps['dispatch'].output.status }}
           Webhook ID: ${{ steps['dispatch'].output.webhookId }}
+          Endpoint: ${{ steps['dispatch'].output.targetUrl }}
+          Resource: ${{ steps['dispatch'].output.resourceUrl }}
+
           Response JSON:
           ${{ steps['dispatch'].output.responseJson }}

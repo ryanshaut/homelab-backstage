@@ -6,12 +6,17 @@
  * https://backstage.io/docs/backend-system/building-backends/index
  */
 import { createBackend } from '@backstage/backend-defaults';
+import { keycloakAuthModule } from './modules/keycloakAuth';
+import { permissionPolicyModule } from './modules/permissionPolicy';
 import { scaffolderWebhookActionsModule } from './modules/scaffolderWebhookActions';
-import { webhooksModule } from './modules/webhooks';
+import webhooksPlugin from './plugins/webhooks';
 
 const backend = createBackend();
 
-backend.add(webhooksModule);
+// ── Webhooks ────────────────────────────────────────────────────────────────
+// /api/webhooks pass-through + status lookup, and the webhook:* actions.
+
+backend.add(webhooksPlugin);
 backend.add(scaffolderWebhookActionsModule);
 
 // ── Core framework plugins ──────────────────────────────────────────────────
@@ -24,7 +29,7 @@ backend.add(import('@backstage/plugin-proxy-backend'));
 backend.add(import('@backstage/plugin-scaffolder-backend'));
 backend.add(import('@backstage/plugin-scaffolder-backend-module-github'));
 backend.add(
-	import('@backstage/plugin-scaffolder-backend-module-notifications'),
+  import('@backstage/plugin-scaffolder-backend-module-notifications'),
 );
 
 // ── TechDocs ────────────────────────────────────────────────────────────────
@@ -35,9 +40,10 @@ backend.add(import('@backstage/plugin-techdocs-backend'));
 
 backend.add(import('@backstage/plugin-auth-backend'));
 
-// OIDC provider — used for Keycloak sign-in.
+// OIDC provider for Keycloak sign-in (replaces the stock oidc-provider module
+// to add the keycloakIdMatchingUserEntityAnnotation resolver).
 // Configured in app-config.yaml under auth.providers.oidc.
-backend.add(import('@backstage/plugin-auth-backend-module-oidc-provider'));
+backend.add(keycloakAuthModule);
 
 // Guest provider remains installed but disabled by config.
 backend.add(import('@backstage/plugin-auth-backend-module-guest-provider'));
@@ -51,15 +57,15 @@ backend.add(
 );
 backend.add(import('@backstage/plugin-catalog-backend-module-logs'));
 backend.add(
-	import('@backstage-community/plugin-catalog-backend-module-keycloak'),
+  import('@backstage-community/plugin-catalog-backend-module-keycloak'),
 );
 
 // ── Permissions ─────────────────────────────────────────────────────────────
 
 backend.add(import('@backstage/plugin-permission-backend'));
-backend.add(
-  import('@backstage/plugin-permission-backend-module-allow-all-policy'),
-);
+// Allow-all except template runs, which can be limited to
+// permission.templateRunnerGroups.
+backend.add(permissionPolicyModule);
 
 // ── Search ──────────────────────────────────────────────────────────────────
 

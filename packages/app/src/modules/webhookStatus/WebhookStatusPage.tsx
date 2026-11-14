@@ -1,102 +1,90 @@
-import { Button, Card, CardContent, Divider, TextField, Typography } from '@material-ui/core';
+import {
+  Button,
+  Card,
+  CardContent,
+  Divider,
+  TextField,
+  Typography,
+} from '@material-ui/core';
 import RefreshIcon from '@material-ui/icons/Refresh';
-import OpenInNewIcon from '@material-ui/icons/OpenInNew';
-import { configApiRef, useApi } from '@backstage/frontend-plugin-api';
-import { useCallback, useMemo, useState } from 'react';
+import {
+  discoveryApiRef,
+  fetchApiRef,
+  useApi,
+} from '@backstage/frontend-plugin-api';
+import { useCallback, useEffect, useState } from 'react';
 
-const getInitialWebhookId = () => {
-  if (typeof window === 'undefined') {
-    return '';
-  }
-
-  return new URLSearchParams(window.location.search).get('id') ?? '';
-};
-
-const getInitialStatusUrl = () => {
-  if (typeof window === 'undefined') {
-    return undefined;
-  }
-
-  return new URLSearchParams(window.location.search).get('statusUrl') ?? undefined;
-};
+const getInitialWebhookId = () =>
+  new URLSearchParams(window.location.search).get('id') ?? '';
 
 type StatusResult = {
   statusCode: number;
   payload: unknown;
 };
 
+/**
+ * Looks up webhook status through the Backstage backend
+ * (GET /api/webhooks/operator/:id/status), so the browser never talks to the
+ * webhook backend directly and requests carry the user's Backstage identity.
+ */
 export const WebhookStatusPage = () => {
-  const configApi = useApi(configApiRef);
+  const discoveryApi = useApi(discoveryApiRef);
+  const fetchApi = useApi(fetchApiRef);
   const [webhookId, setWebhookId] = useState(getInitialWebhookId);
-  const [explicitStatusUrl, setExplicitStatusUrl] = useState<string | undefined>(
-    getInitialStatusUrl,
-  );
   const [result, setResult] = useState<StatusResult | undefined>();
   const [error, setError] = useState<string | undefined>();
   const [isLoading, setIsLoading] = useState(false);
 
-  const operatorBaseUrl = useMemo(() => {
-    const configuredBaseUrl = configApi.getOptionalString('webhooks.baseUrl') ?? '';
-    const normalizedBaseUrl = configuredBaseUrl
-      .replace(/\/$/, '')
-      .replace(/\/api\/webhooks\/?$/, '');
+  const fetchStatus = useCallback(
+    async (id: string) => {
+      const trimmed = id.trim();
+      if (!trimmed) {
+        setError('Enter a webhook ID first.');
+        setResult(undefined);
+        return;
+      }
 
-    return normalizedBaseUrl;
-  }, [configApi]);
+      setIsLoading(true);
+      setError(undefined);
 
-  const statusUrl = useMemo(() => {
-    if (explicitStatusUrl) {
-      return explicitStatusUrl;
-    }
-
-    if (!webhookId.trim()) {
-      return undefined;
-    }
-
-    if (!operatorBaseUrl) {
-      return `/api/operator/webhooks/${encodeURIComponent(webhookId.trim())}/status`;
-    }
-
-    return `${operatorBaseUrl}/api/operator/webhooks/${encodeURIComponent(webhookId.trim())}/status`;
-  }, [explicitStatusUrl, operatorBaseUrl, webhookId]);
-
-  const fetchStatus = useCallback(async () => {
-    if (!statusUrl) {
-      setError('Enter a webhook ID first.');
-      setResult(undefined);
-      return;
-    }
-
-    setIsLoading(true);
-    setError(undefined);
-
-    try {
-      const response = await fetch(statusUrl);
-      const responseText = await response.text();
-
-      let payload: unknown = responseText;
       try {
-        payload = responseText ? JSON.parse(responseText) : undefined;
-      } catch {
-        // Preserve non-JSON response bodies for debugging.
-      }
+        const baseUrl = await discoveryApi.getBaseUrl('webhooks');
+        const response = await fetchApi.fetch(
+          `${baseUrl}/operator/${encodeURIComponent(trimmed)}/status`,
+          { headers: { accept: 'application/json' } },
+        );
+        const responseText = await response.text();
 
-      setResult({
-        statusCode: response.status,
-        payload,
-      });
+        let payload: unknown = responseText;
+        try {
+          payload = responseText ? JSON.parse(responseText) : undefined;
+        } catch {
+          // Preserve non-JSON response bodies for debugging.
+        }
 
-      if (!response.ok) {
-        setError(`Status request failed (${response.status}).`);
+        setResult({ statusCode: response.status, payload });
+        if (!response.ok) {
+          setError(`Status request failed (${response.status}).`);
+        }
+      } catch (e) {
+        const message =
+          e instanceof Error ? e.message : 'Unknown network error';
+        setError(`Request failed: ${message}`);
+        setResult(undefined);
+      } finally {
+        setIsLoading(false);
       }
-    } catch (e) {
-      const message = e instanceof Error ? e.message : 'Unknown network error';
-      setError(`Request failed: ${message}`);
-      setResult(undefined);
-    } finally {
-      setIsLoading(false);
+    },
+    [discoveryApi, fetchApi],
+  );
+
+  // Arriving from a scaffolder output link (?id=...): load immediately.
+  useEffect(() => {
+    const initialId = getInitialWebhookId();
+    if (initialId) {
+      fetchStatus(initialId);
     }
-  }, [statusUrl]);
+  }, [fetchStatus]);
 
   return (
     <Card>
@@ -105,43 +93,35 @@ export const WebhookStatusPage = () => {
           Webhook Status
         </Typography>
         <Typography variant="body2" color="textSecondary" paragraph>
-          Check the latest status for a webhook by ID. This displays the full JSON response.
+          Check the latest status for a webhook by ID. This displays the full
+          JSON response.
         </Typography>
-        <TextField
-          label="Webhook ID"
-          variant="outlined"
-          fullWidth
-          margin="normal"
-          value={webhookId}
-          onChange={event => {
-            setWebhookId(event.target.value);
-            setExplicitStatusUrl(undefined);
+        <form
+          onSubmit={event => {
+            event.preventDefault();
+            fetchStatus(webhookId);
           }}
-          placeholder="Paste webhook id from submit response"
-        />
-        <div style={{ display: 'flex', gap: 12, marginTop: 8, marginBottom: 8 }}>
+        >
+          <TextField
+            label="Webhook ID"
+            variant="outlined"
+            fullWidth
+            margin="normal"
+            value={webhookId}
+            onChange={event => setWebhookId(event.target.value)}
+            placeholder="Paste webhook id from submit response"
+          />
           <Button
+            type="submit"
             variant="contained"
             color="primary"
             startIcon={<RefreshIcon />}
-            onClick={fetchStatus}
             disabled={isLoading}
+            style={{ marginTop: 8, marginBottom: 8 }}
           >
             {isLoading ? 'Refreshing...' : 'Refresh Status'}
           </Button>
-          {statusUrl && (
-            <Button
-              variant="outlined"
-              color="default"
-              startIcon={<OpenInNewIcon />}
-              href={statusUrl}
-              target="_blank"
-              rel="noreferrer"
-            >
-              Open Endpoint
-            </Button>
-          )}
-        </div>
+        </form>
 
         {error && (
           <Typography color="error" paragraph>
@@ -168,10 +148,7 @@ export const WebhookStatusPage = () => {
         >
           {result
             ? JSON.stringify(
-                {
-                  statusCode: result.statusCode,
-                  response: result.payload,
-                },
+                { statusCode: result.statusCode, response: result.payload },
                 null,
                 2,
               )

@@ -116,22 +116,40 @@ Each should point to a raw catalog YAML URL that defines one or more
 
 See [docs/keycloak.md](docs/keycloak.md) for full details.
 
-- The realm export at `keycloak/realm-export.json` is imported automatically
-  on first Keycloak startup.
-- Two demo users (`alice`, `bob`) are pre-created in the `platform-team` group.
+- The compose Keycloak starts empty: create the `backstage` realm, the
+  `backstage` OIDC client and the `backstage-catalog-sync` service-account client.
 - Sign-in uses the `backstage` OIDC client; catalog sync uses the
   `backstage-catalog-sync` service-account client.
+- Sign-in resolver `keycloakIdMatchingUserEntityAnnotation` matches the OIDC
+  `sub` (Keycloak user ID) to the `keycloak.org/id` annotation on synced User
+  entities, so users must be synced by the catalog provider before they can
+  sign in (up to 5 minutes after creation).
 
 Required env vars: `AUTH_OIDC_*`, `KEYCLOAK_*`
 
 ### Generic Webhooks
 
-- Backstage exposes `POST/GET/... /api/webhooks/<app>/<event>`.
-- Requests are forwarded to `${WEBHOOK_BASE_URL}/<tenant>/<app>/<event>`.
-- Tenant defaults to `backstage-<auth.environment>` and can be overridden with
-  `WEBHOOK_TENANT`.
-- Method, query string, body, and headers are passed through for compatibility
-  with external webhook backends.
+The `webhooks` backend plugin (`packages/backend/src/plugins/webhooks`) and the
+`webhook:dispatch` / `webhook:request-vm` scaffolder actions share one client.
+
+| Backstage route | Upstream |
+|---|---|
+| `ANY /api/webhooks/<app>/<event>` | `${WEBHOOK_BASE_URL}/api/webhooks/<tenant>/<app>/<event>` |
+| `GET /api/webhooks/operator/<id>/status` | `${WEBHOOK_BASE_URL}/api/operator/webhooks/<id>/status` |
+
+- Callers need Backstage user or service credentials. External systems should
+  use a static token under `backend.auth.externalAccess`.
+- Method, query string, body and headers pass through, except `authorization`,
+  `cookie`, hop-by-hop headers and anything starting with `x-backstage-`.
+- Backstage adds `x-backstage-principal` (user entity ref or `service:<subject>`)
+  and, from scaffolder actions, `x-backstage-task-id`.
+- `tenant`, `app`, `event` and `id` must match `^[A-Za-z0-9][A-Za-z0-9._-]*$`.
+- Tenant is `WEBHOOK_TENANT`, defaulting to `backstage-production`
+  (`backstage-development` in the local-docker overlay).
+- If `WEBHOOK_SIGNING_SECRET` is set, upstream requests carry
+  `x-backstage-timestamp` and `x-backstage-signature: sha256=<hex>`, an
+  HMAC-SHA256 over `v1:<timestamp>:<METHOD>:<path?query>:<raw body>`.
+- The `/webhook-status?id=<id>` page reads status through the backend route.
 
 ---
 
@@ -208,7 +226,7 @@ Use **Terminal → Run Task** and choose:
 | Area | Status | Notes |
 |------|--------|-------|
 | Keycloak prod TLS | ❌ Not done | Compose uses `start-dev`; production would need `start` + TLS certs |
-| Permission policy | ❌ Stub | Uses `allow-all-policy`; replace with a real policy for production |
+| Permission policy | ⚠️ Basic | Allow-all, except template runs can be limited via `permission.templateRunnerGroups` |
 | TechDocs | ⚠️ Basic | Local builder, no external storage |
-| Test coverage | ❌ Minimal | Scaffolded unit tests only |
+| Test coverage | ⚠️ Partial | Webhook client/router and permission policy are unit tested |
 | Kubernetes plugin | ⚠️ Enabled | No cluster connected; configure via `app-config.yaml` |
