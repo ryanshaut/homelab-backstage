@@ -17,13 +17,13 @@ import {
 } from '@backstage/frontend-plugin-api';
 import { SignInPageBlueprint } from '@backstage/plugin-app-react';
 import catalogPlugin from '@backstage/plugin-catalog/alpha';
+import { approvalStatusPageModule } from './modules/approvalStatus';
 import { navModule } from './modules/nav';
 import { webhookStatusPageModule } from './modules/webhookStatus';
 
-const keycloakAuthApiRef =
-  createApiRef<
-    OpenIdConnectApi & ProfileInfoApi & BackstageIdentityApi & SessionApi
-  >().with({ id: 'auth.keycloak' });
+const keycloakAuthApiRef = createApiRef<
+  OpenIdConnectApi & ProfileInfoApi & BackstageIdentityApi & SessionApi
+>().with({ id: 'auth.keycloak' });
 
 const keycloakAuthApi = ApiBlueprint.make({
   name: 'keycloak-auth-api',
@@ -53,17 +53,18 @@ const keycloakAuthApi = ApiBlueprint.make({
 
 const signInPage = SignInPageBlueprint.make({
   params: {
-    loader: async () => props => (
-      <SignInPage
-        {...props}
-        provider={{
-          id: 'keycloak-auth-provider',
-          title: 'Keycloak',
-          message: 'Sign In using Keycloak',
-          apiRef: keycloakAuthApiRef,
-        }}
-      />
-    ),
+    loader: async () => props =>
+      (
+        <SignInPage
+          {...props}
+          provider={{
+            id: 'keycloak-auth-provider',
+            title: 'Keycloak',
+            message: 'Sign In using Keycloak',
+            apiRef: keycloakAuthApiRef,
+          }}
+        />
+      ),
   },
 });
 
@@ -85,6 +86,7 @@ export default createApp({
     catalogPlugin,
     navModule,
     webhookStatusPageModule,
+    approvalStatusPageModule,
     keycloakAuthModule,
   ],
 });

@@ -53,6 +53,25 @@ webhooks:
   #   v1:<x-backstage-timestamp>:<METHOD>:<path?query>:<raw body>
   signingSecret: ${WEBHOOK_SIGNING_SECRET:-}
 
+approvals:
+  # External approval API ("Approve Me"). Leave APPROVALS_BASE_URL unset to
+  # disable approvals (approval:* actions are then not registered).
+  baseUrl: ${APPROVALS_BASE_URL:-}
+  # `source` recorded on approvals; /api/approvals only serves this source.
+  source: ${APPROVALS_SOURCE:-backstage}
+  # This backend's URL as the approval system reaches it. Decisions are
+  # POSTed to <callbackBaseUrl>/api/approvals/callbacks/<id>/<signature>.
+  # Defaults to backend.baseUrl.
+  callbackBaseUrl: ${APPROVALS_CALLBACK_BASE_URL:-}
+  # Signs callback URLs and continuation specs. Keep it stable: changing it
+  # orphans approvals that are still waiting for a decision.
+  signingSecret: ${APPROVALS_SIGNING_SECRET:-}
+  auth:
+    # Keycloak service account (client credentials) for the approval API.
+    metadataUrl: ${APPROVALS_OIDC_METADATA_URL:-}
+    clientId: ${APPROVALS_CLIENT_ID:-}
+    clientSecret: ${APPROVALS_CLIENT_SECRET:-}
+
 techdocs:
   builder: 'local'
   generator:

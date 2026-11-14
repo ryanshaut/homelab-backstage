@@ -29,6 +29,8 @@ node_modules/
 # dotenv environment variables file
 .env
 .env.test
+.en.bak*
+**.bak*
 
 # Build output
 dist

@@ -151,6 +151,81 @@ The `webhooks` backend plugin (`packages/backend/src/plugins/webhooks`) and the
   HMAC-SHA256 over `v1:<timestamp>:<METHOD>:<path?query>:<raw body>`.
 - The `/webhook-status?id=<id>` page reads status through the backend route.
 
+### Approvals
+
+Approvals happen on human time (minutes to weeks), so an approval-gated
+request is split into two templates, and nothing in Backstage waits:
+
+```
+front-half template (users run it)          approval system ("Approve Me")
+  approval:request ──── POST /approvals ────►  human decides, any time later
+  task completes                                       │
+                                                       ▼
+back-half template  ◄── launcher ◄── POST /api/approvals/callbacks/<id>/<hmac>
+  approval:verify  (required first step)
+  webhook:* ...    (standard webhook workflow)
+```
+
+**Front half** — a normal template that ends with `approval:request`:
+
+```yaml
+- id: approval
+  action: approval:request
+  input:
+    approver: user::someone@example.com   # fixed by the template author
+    title: Approve VM ${{ parameters.vmName }}
+    description: ${{ parameters.justification }}
+    facts: [{ label: Image, value: ${{ parameters.image }} }]
+    continuation:
+      templateRef: template:default/approved-request-vm-execute
+      values:                                # parameters for the back half
+        vmName: ${{ parameters.vmName }}
+```
+
+It checks the continuation template is valid, creates the approval (with
+`idepotency_id = backstage:<taskId>:<stepId>`), points its `callback_url` at
+Backstage, and completes. The continuation (template + values + requester) is
+stored, HMAC-signed, inside the approval's `data`, so the approval system is
+the durable store: Backstage restarts (or the in-memory DB) lose nothing.
+Values are visible to the approver; never put secrets in them.
+
+**Callback** — the approval system POSTs its decision to
+`<APPROVALS_CALLBACK_BASE_URL>/api/approvals/callbacks/<id>/<hmac>` (no
+Backstage token; the HMAC is the credential). Backstage re-reads the approval
+from the API and only acts when the record agrees, so a leaked or forged
+"approved" callback cannot start anything while the record is pending.
+Approved → the back half starts once (duplicate callbacks are ignored) as a
+new scaffolder task; rejected → nothing runs. Either way the requester gets a
+Backstage notification.
+
+**Back half** — a template that must:
+- carry the label `approvals.backstage.io/continuation: "true"` — the
+  permission policy hides these from users, so they cannot see or run them;
+- start with `approval:verify` — fails unless the task was launched by
+  Backstage with a signed, short-lived grant for an approved request. Outputs
+  `approvalId`, `approver`, `requestedBy`, `requestedByEmail`, `reason`.
+
+Back-half tasks run as the approvals service, not the user; `webhook:*`
+actions still send the original requester as `x-backstage-principal`.
+
+**Status** — `/approval-status?id=<approvalId>` shows the approval, its audit
+trail, and what happened after the decision (waiting / started with a link to
+the task / rejected / failed with a **Retry start** button). It refreshes
+while anything is in flight. `GET /api/approvals/:id` serves only approvals
+whose `source` matches `approvals.source`.
+
+Example: `examples/templates/approved-vm` (front) and
+`examples/templates/approved-vm-execute` (back).
+
+Config: `approvals.*` in `app-config.yaml`, env vars `APPROVALS_*` in
+`.env.example`. `APPROVALS_SIGNING_SECRET` (32+ chars) is required and must
+stay stable; rotating it orphans approvals that are still pending. Unset
+`APPROVALS_BASE_URL` disables approvals.
+
+> Zod `.default()` values in action schemas are **not** applied by the
+> scaffolder (inputs are only validated), so action handlers apply their
+> defaults explicitly.
+
 ---
 
 ## Production image pipeline

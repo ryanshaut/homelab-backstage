@@ -1,0 +1,61 @@
+# Back half of an approval-gated VM request. Started only by Backstage after
+# the approval is granted:
+#  - the continuation label hides it from users (permission policy), and
+#  - approval:verify (required first step) fails unless Backstage launched it.
+apiVersion: scaffolder.backstage.io/v1beta3
+kind: Template
+metadata:
+  name: approved-request-vm-execute
+  title: Request VM (approved continuation)
+  description: Creates the VM for an approved request. Not run directly.
+  labels:
+    approvals.backstage.io/continuation: 'true'
+spec:
+  owner: group:platform-team
+  type: approval-continuation
+
+  # Validates the values carried over from the front half.
+  parameters:
+    - required: [vmName, image, cpu, memoryGb, diskGb]
+      properties:
+        vmName: { type: string }
+        image: { type: string }
+        cpu: { type: number }
+        memoryGb: { type: number }
+        diskGb: { type: number }
+
+  steps:
+    - id: approval
+      name: Verify approval
+      action: approval:verify
+
+    # The standard webhook workflow, unchanged.
+    - id: request-vm
+      name: Request VM
+      action: webhook:request-vm
+      input:
+        app: infra
+        event: request-vm
+        vmName: ${{ parameters.vmName }}
+        image: ${{ parameters.image }}
+        cpu: ${{ parameters.cpu }}
+        memoryGb: ${{ parameters.memoryGb }}
+        diskGb: ${{ parameters.diskGb }}
+        metadata:
+          approvalId: ${{ steps.approval.output.approvalId }}
+          approvedBy: ${{ steps.approval.output.approver }}
+
+  output:
+    links:
+      - title: Webhook Status
+        icon: dashboard
+        url: /webhook-status?id=${{ steps['request-vm'].output.webhookId }}
+    text:
+      - title: VM Request Result
+        content: |
+          Approval: #${{ steps.approval.output.approvalId }} by ${{ steps.approval.output.approver }}
+          Requested by: ${{ steps.approval.output.requestedBy }}
+          Webhook ID: ${{ steps['request-vm'].output.webhookId }}
+
+          Response JSON:
+          ${{ steps['request-vm'].output.responseJson }}

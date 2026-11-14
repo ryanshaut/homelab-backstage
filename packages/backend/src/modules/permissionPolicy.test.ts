@@ -3,6 +3,7 @@ import { AuthorizeResult } from '@backstage/plugin-permission-common';
 import type { PolicyQueryUser } from '@backstage/plugin-permission-node';
 import {
   actionExecutePermission,
+  taskCancelPermission,
   taskCreatePermission,
 } from '@backstage/plugin-scaffolder-common/alpha';
 import { catalogEntityReadPermission } from '@backstage/plugin-catalog-common/alpha';
@@ -56,11 +57,33 @@ describe('HomelabPermissionPolicy', () => {
         result: AuthorizeResult.DENY,
       });
     }
+    // Service principals (no user), e.g. the approvals launcher, may run templates.
     await expect(
       outsider.handle({ permission: taskCreatePermission }),
     ).resolves.toEqual({
-      result: AuthorizeResult.DENY,
+      result: AuthorizeResult.ALLOW,
     });
+  });
+
+  it('hides approval continuation templates from users only', async () => {
+    const policy = new HomelabPermissionPolicy(new Set(), userInfo([]));
+    await expect(
+      policy.handle({ permission: catalogEntityReadPermission }, user),
+    ).resolves.toEqual({
+      result: AuthorizeResult.CONDITIONAL,
+      pluginId: 'catalog',
+      resourceType: 'catalog-entity',
+      conditions: {
+        not: {
+          rule: 'HAS_LABEL',
+          resourceType: 'catalog-entity',
+          params: { label: 'approvals.backstage.io/continuation' },
+        },
+      },
+    });
+    await expect(
+      policy.handle({ permission: catalogEntityReadPermission }),
+    ).resolves.toEqual({ result: AuthorizeResult.ALLOW });
   });
 
   it('does not restrict other permissions', async () => {
@@ -69,7 +92,7 @@ describe('HomelabPermissionPolicy', () => {
       userInfo([]),
     );
     await expect(
-      policy.handle({ permission: catalogEntityReadPermission }, user),
+      policy.handle({ permission: taskCancelPermission }, user),
     ).resolves.toEqual({ result: AuthorizeResult.ALLOW });
   });
 });

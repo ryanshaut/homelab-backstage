@@ -6,7 +6,13 @@ import {
 } from '@backstage/backend-plugin-api';
 import { parseEntityRef, stringifyEntityRef } from '@backstage/catalog-model';
 import {
+  catalogConditions,
+  createCatalogConditionalDecision,
+} from '@backstage/plugin-catalog-backend/alpha';
+import { catalogEntityReadPermission } from '@backstage/plugin-catalog-common/alpha';
+import {
   AuthorizeResult,
+  isPermission,
   PolicyDecision,
 } from '@backstage/plugin-permission-common';
 import {
@@ -19,6 +25,7 @@ import {
   actionExecutePermission,
   taskCreatePermission,
 } from '@backstage/plugin-scaffolder-common/alpha';
+import { CONTINUATION_LABEL } from '../plugins/approvals/continuation';
 
 /** Permissions that run templates / actions, and therefore hit real infra. */
 const TEMPLATE_RUN_PERMISSIONS = new Set([
@@ -27,9 +34,14 @@ const TEMPLATE_RUN_PERMISSIONS = new Set([
 ]);
 
 /**
- * Allows everything, except that running templates and scaffolder actions is
- * limited to members of `permission.templateRunnerGroups` when that list is
- * set. With the list unset, behaves like the allow-all policy.
+ * Allows everything, except:
+ * - Approval continuation templates (label approvals.backstage.io/continuation)
+ *   are invisible to users, so they can only be started by the approvals
+ *   launcher (a service principal) after an approval.
+ * - Running templates and scaffolder actions is limited to members of
+ *   `permission.templateRunnerGroups` when that list is set. Service
+ *   principals (backend plugins, e.g. the approvals launcher, and admin-issued
+ *   static tokens) are not restricted.
  */
 export class HomelabPermissionPolicy implements PermissionPolicy {
   constructor(
@@ -41,14 +53,17 @@ export class HomelabPermissionPolicy implements PermissionPolicy {
     request: PolicyQuery,
     user?: PolicyQueryUser,
   ): Promise<PolicyDecision> {
+    if (user && isPermission(request.permission, catalogEntityReadPermission)) {
+      return createCatalogConditionalDecision(request.permission, {
+        not: catalogConditions.hasLabel({ label: CONTINUATION_LABEL }),
+      });
+    }
     if (
+      !user ||
       this.runnerGroups.size === 0 ||
       !TEMPLATE_RUN_PERMISSIONS.has(request.permission.name)
     ) {
       return { result: AuthorizeResult.ALLOW };
-    }
-    if (!user) {
-      return { result: AuthorizeResult.DENY };
     }
     const { ownershipEntityRefs } = await this.userInfo.getUserInfo(
       user.credentials,

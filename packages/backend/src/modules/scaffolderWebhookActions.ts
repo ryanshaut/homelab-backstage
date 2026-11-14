@@ -19,8 +19,34 @@ import {
   TASK_ID_HEADER,
   WebhookRouting,
 } from '../plugins/webhooks/client';
+import { REQUESTED_BY_SECRET } from '../plugins/approvals/continuation';
 
 const MAX_ERROR_BODY_CHARS = 2000;
+
+/**
+ * The user a task acts for. Tasks started by the approvals launcher (approved
+ * continuations) have no user ref (the scaffolder sets ctx.user to
+ * `{ ref: undefined }` for service-created tasks); the launcher passes the
+ * original requester as a task secret instead. That secret is only honoured
+ * when there is no user ref, so a person starting a task cannot use it to
+ * impersonate someone else.
+ */
+export function requesterRef(ctx: {
+  user?: { ref?: string };
+  secrets?: Record<string, string>;
+}): string | undefined {
+  if (ctx.user?.ref) {
+    return ctx.user.ref;
+  }
+  return ctx.secrets?.[REQUESTED_BY_SECRET];
+}
+
+/*
+ * NOTE: the scaffolder validates inputs against the JSON Schema generated from
+ * these zod schemas but does not apply zod `.default()` values to ctx.input.
+ * Defaults are declared in the schema (for docs/forms) AND applied in the
+ * handlers below.
+ */
 
 type WebhookRequest = {
   app: string;
@@ -166,9 +192,10 @@ const createDispatchAction = (routing: WebhookRouting) =>
       },
     },
     async handler(ctx) {
-      const result = await callWebhook(routing, ctx.input, {
+      const request = { ...ctx.input, method: ctx.input.method ?? 'POST' };
+      const result = await callWebhook(routing, request, {
         taskId: ctx.task.id,
-        userRef: ctx.user?.ref,
+        userRef: requesterRef(ctx),
         signal: ctx.signal,
       });
       emitOutputs(ctx, result);
@@ -204,7 +231,16 @@ const createRequestVmAction = (routing: WebhookRouting) =>
       },
     },
     async handler(ctx) {
-      const { app, event, headers, query, metadata } = ctx.input;
+      const {
+        app = 'infra',
+        event = 'request-vm',
+        cpu = 2,
+        memoryGb = 4,
+        diskGb = 40,
+        headers,
+        query,
+        metadata,
+      } = ctx.input;
       const result = await callWebhook(
         routing,
         {
@@ -217,20 +253,20 @@ const createRequestVmAction = (routing: WebhookRouting) =>
             vm: {
               name: ctx.input.vmName,
               image: ctx.input.image,
-              cpu: ctx.input.cpu,
-              memoryGb: ctx.input.memoryGb,
-              diskGb: ctx.input.diskGb,
+              cpu,
+              memoryGb,
+              diskGb,
             },
             metadata: {
               ...metadata,
               // Set server-side after the spread so templates cannot override.
-              requestedBy: ctx.user?.ref,
+              requestedBy: requesterRef(ctx),
               templateName: ctx.templateInfo?.entity?.metadata.name,
               taskId: ctx.task.id,
             },
           },
         },
-        { taskId: ctx.task.id, userRef: ctx.user?.ref, signal: ctx.signal },
+        { taskId: ctx.task.id, userRef: requesterRef(ctx), signal: ctx.signal },
       );
       emitOutputs(ctx, result);
     },

@@ -8,7 +8,9 @@
 import { createBackend } from '@backstage/backend-defaults';
 import { keycloakAuthModule } from './modules/keycloakAuth';
 import { permissionPolicyModule } from './modules/permissionPolicy';
+import { scaffolderApprovalActionsModule } from './modules/scaffolderApprovalActions';
 import { scaffolderWebhookActionsModule } from './modules/scaffolderWebhookActions';
+import approvalsPlugin from './plugins/approvals';
 import webhooksPlugin from './plugins/webhooks';
 
 const backend = createBackend();
@@ -18,6 +20,13 @@ const backend = createBackend();
 
 backend.add(webhooksPlugin);
 backend.add(scaffolderWebhookActionsModule);
+
+// ── Approvals ───────────────────────────────────────────────────────────────
+// /api/approvals/:id status lookup, and the approval:request action.
+// Both are no-ops unless approvals.baseUrl is configured.
+
+backend.add(approvalsPlugin);
+backend.add(scaffolderApprovalActionsModule);
 
 // ── Core framework plugins ──────────────────────────────────────────────────
 

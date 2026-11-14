@@ -1,0 +1,85 @@
+# Front half of an approval-gated VM request. Users run this template; it
+# asks for approval and finishes. When the approver approves (minutes or weeks
+# later), Backstage starts approved-request-vm-execute as a new task.
+apiVersion: scaffolder.backstage.io/v1beta3
+kind: Template
+metadata:
+  name: approved-request-vm-template
+  title: Request VM (with approval)
+  description: Request a VM; it is created once the approver approves
+spec:
+  owner: group:platform-team
+  type: infrastructure
+
+  parameters:
+    - title: VM Details
+      required:
+        - vmName
+        - image
+        - justification
+      properties:
+        vmName:
+          title: VM Name
+          type: string
+          description: Unique VM name
+          ui:autofocus: true
+        image:
+          title: Image
+          type: string
+          default: ubuntu-24.04
+        cpu:
+          title: vCPU
+          type: number
+          default: 2
+        memoryGb:
+          title: Memory (GB)
+          type: number
+          default: 4
+        diskGb:
+          title: Disk (GB)
+          type: number
+          default: 40
+        justification:
+          title: Justification
+          type: string
+          description: Shown to the approver
+          ui:widget: textarea
+
+  steps:
+    - id: approval
+      name: Request approval
+      action: approval:request
+      input:
+        # The approver is fixed by the template, not chosen by the requester.
+        approver: user::approver@example.com
+        title: Approve VM ${{ parameters.vmName }}
+        description: ${{ parameters.justification }}
+        facts:
+          - label: Image
+            value: ${{ parameters.image }}
+          - label: Size
+            value: ${{ parameters.cpu }} vCPU / ${{ parameters.memoryGb }} GB RAM / ${{ parameters.diskGb }} GB disk
+        # notice:
+        #   level: warning
+        #   text: Production network
+        continuation:
+          # Back half, started automatically once approved.
+          templateRef: template:default/approved-request-vm-execute
+          values:
+            vmName: ${{ parameters.vmName }}
+            image: ${{ parameters.image }}
+            cpu: ${{ parameters.cpu }}
+            memoryGb: ${{ parameters.memoryGb }}
+            diskGb: ${{ parameters.diskGb }}
+
+  output:
+    links:
+      - title: Approval Status
+        icon: dashboard
+        url: ${{ steps.approval.output.statusUrl }}
+    text:
+      - title: Waiting for approval
+        content: |
+          Approval #${{ steps.approval.output.approvalId }} has been requested.
+          The VM is created automatically once it is approved; you will get a
+          Backstage notification either way.
